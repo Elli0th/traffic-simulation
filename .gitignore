@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.DS_Store
+
+# Raw OpenStreetMap downloads (about 125 MB). The built maps in public/ are what the app needs;
+# fetch these again with scripts/fetch-map.mjs only if you want to rebuild a map.
+data/*.json
+data/west/

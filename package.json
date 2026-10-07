@@ -1,0 +1,16 @@
+{
+  "name": "tangible-table",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "test": "node scripts/test-depth.mjs && node scripts/test-lidar.mjs"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "vite": "^8.3.3"
+  }
+}

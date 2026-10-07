@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tangible Table</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+        color: #e9ecef;
+      }
+      canvas {
+        display: block;
+        touch-action: none;
+      }
+      #hud {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        width: 300px;
+        padding: 14px 16px;
+        background: rgba(8, 10, 14, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        backdrop-filter: blur(6px);
+        pointer-events: none;
+      }
+      #hud h1 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #9aa4b2;
+      }
+      #hud .row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 14px;
+        margin: 5px 0;
+      }
+      #hud .row b {
+        font-variant-numeric: tabular-nums;
+      }
+      #bar {
+        height: 6px;
+        margin: 8px 0 10px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      #bar i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: #39e6b0;
+      }
+      #story {
+        margin: 10px 0 0;
+        font-size: 15px;
+        line-height: 1.4;
+      }
+      #help {
+        margin: 10px 0 0;
+        font-size: 11px;
+        line-height: 1.5;
+        color: #7c8696;
+      }
+      body.nohud #hud {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <h1>Tangible Table</h1>
+      <div class="row"><span>Congestion</span><b id="m-cong">0%</b></div>
+      <div id="bar"><i></i></div>
+      <div class="row"><span>Streets closed</span><b id="m-closed">0</b></div>
+      <div class="row"><span>Cars</span><b id="m-cars">0</b></div>
+      <div class="row"><span>Ambulance route</span><b id="m-amb">–</b></div>
+      <p id="story"></p>
+      <p id="help">
+        Click: place or remove an object · Drag: move · Scroll: resize<br />
+        V: table / 3D view · H: hide panel · C: clear · +/−: cars · F: fullscreen
+      </p>
+    </div>
+    <script type="module" src="/src/grid/main.js"></script>
+  </body>
+</html>

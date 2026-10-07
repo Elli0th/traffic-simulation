@@ -1,0 +1,12 @@
+[out:json][timeout:120][bbox:57.678,11.925,57.725,12.01];
+(
+  node[highway~"^(traffic_signals|stop|give_way|crossing|bus_stop)$"];
+  node[railway=tram_stop];
+  node[public_transport=stop_position];
+  way[highway~"^(footway|pedestrian|path|cycleway|steps|service|busway)$"];
+);
+out geom;
+relation[type=restriction];
+out body;
+relation[route~"^(tram|bus)$"];
+out body;

@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tangible Table · Göteborg</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+        color: #e9ecef;
+      }
+      canvas {
+        display: block;
+        touch-action: none;
+      }
+      #hud {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        width: 310px;
+        padding: 14px 16px;
+        background: rgba(8, 10, 14, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        backdrop-filter: blur(6px);
+        pointer-events: none;
+      }
+      #hud h1 {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin: 0 0 10px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #9aa4b2;
+      }
+      #clock {
+        font-size: 22px;
+        letter-spacing: 0.02em;
+        color: #f3f5f7;
+        font-variant-numeric: tabular-nums;
+      }
+      #hud .row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 14px;
+        margin: 5px 0;
+      }
+      #hud .row b {
+        font-variant-numeric: tabular-nums;
+      }
+      #bar {
+        height: 6px;
+        margin: 8px 0 10px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      #bar i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: #39e6b0;
+      }
+      #story {
+        margin: 10px 0 0;
+        font-size: 15px;
+        line-height: 1.4;
+      }
+      #help {
+        margin: 10px 0 0;
+        font-size: 11px;
+        line-height: 1.5;
+        color: #7c8696;
+      }
+      body.nohud #hud,
+      body.nohud #plan {
+        display: none;
+      }
+      #plan {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        width: 300px;
+        padding: 14px 16px;
+        background: rgba(8, 10, 14, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        backdrop-filter: blur(6px);
+        font-size: 13px;
+      }
+      #plan h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #9aa4b2;
+      }
+      #plan .tools {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+      #plan button {
+        padding: 7px 8px;
+        color: inherit;
+        background: #1c222b;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 6px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #plan button.on {
+        color: #06222e;
+        background: #5ad1ff;
+        border-color: #5ad1ff;
+        font-weight: 600;
+      }
+      #plan button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      #plan .hours {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin: 8px 0;
+        color: #9aa4b2;
+      }
+      #plan input {
+        width: 52px;
+        padding: 4px 6px;
+        color: inherit;
+        background: #151920;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 5px;
+        font: inherit;
+      }
+      #plan p {
+        margin: 8px 0 0;
+        line-height: 1.4;
+        color: #9aa4b2;
+      }
+      #plan table {
+        width: 100%;
+        margin-top: 8px;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      #plan td,
+      #plan th {
+        padding: 3px 0;
+        text-align: right;
+        font-weight: 400;
+      }
+      #plan th {
+        color: #9aa4b2;
+      }
+      #plan td:first-child,
+      #plan th:first-child {
+        text-align: left;
+      }
+      #plan td.worse {
+        color: #ff8a7a;
+      }
+      #plan td.better {
+        color: #39e6b0;
+      }
+      #plan canvas {
+        display: block;
+        width: 100%;
+        margin-top: 8px;
+      }
+      #loading {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #9aa4b2;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loading">Loading Göteborg…</div>
+    <div id="hud">
+      <h1><span>Göteborg · <span id="m-speed">3×</span></span><span id="clock">07:30</span></h1>
+      <div class="row"><span>Congestion</span><b id="m-cong">0%</b></div>
+      <div id="bar"><i></i></div>
+      <div class="row"><span>Vehicles on the road</span><b id="m-cars">0</b></div>
+      <div class="row"><span>Average speed</span><b id="m-kmh">–</b></div>
+      <div class="row"><span>Trams · people out</span><b id="m-life">–</b></div>
+      <div class="row"><span>Streets closed · diverted</span><b id="m-closed">0 · 0</b></div>
+      <div class="row"><span>Ambulance to Centralen</span><b id="m-amb">–</b></div>
+      <p id="story"></p>
+      <p id="help">
+        Click: place or remove an object · Drag: move it<br />
+        Scroll: zoom (or resize an object) · Right-drag: pan · 0: whole city<br />
+        1–4: speed · Space: pause · T: +1 hour · +/−: traffic<br />
+        V: table / 3D view · H: hide panel · C: clear · F: fullscreen<br />
+        Map data © OpenStreetMap contributors
+      </p>
+    </div>
+    <div id="plan">
+      <h2>Plan a change</h2>
+      <div class="tools">
+        <button data-tool="object" class="on">Close (object)</button>
+        <button data-tool="narrow">One lane fewer</button>
+        <button data-tool="widen">One lane more</button>
+        <button data-tool="works">Roadworks</button>
+        <button data-tool="road">Draw a new road</button>
+        <button id="plan-undo">Undo last</button>
+      </div>
+      <div class="hours">Roadworks from <input id="works-from" type="number" min="0" max="23" value="7" /> to <input id="works-to" type="number" min="1" max="24" value="10" /> o'clock</div>
+      <p id="plan-hint"></p>
+      <div class="tools" style="margin-top: 10px">
+        <button id="compare-2">Compare: next 2 hours</button>
+        <button id="compare-day">Compare: whole day</button>
+      </div>
+      <div id="plan-result"></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

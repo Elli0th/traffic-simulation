@@ -1,0 +1,17 @@
+[out:json][timeout:180][bbox:57.678,11.925,57.725,12.01];
+(
+  way[highway~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];
+  way[railway=tram];
+  way[building];
+  relation[building];
+  way[natural=water];
+  relation[natural=water];
+  way[leisure~"^(park|garden|pitch)$"];
+  way[landuse~"^(grass|forest|meadow|cemetery|recreation_ground)$"];
+  way[natural=wood];
+  relation[leisure=park];
+  way[amenity=hospital];
+  relation[amenity=hospital];
+  way[aeroway];
+);
+out geom;

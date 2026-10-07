@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tangible Table · Lidar</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --line: rgba(255, 255, 255, 0.12);
+        --dim: #8a94a3;
+        --accent: #5ad1ff;
+        --good: #39e6b0;
+        --bad: #ff6a5e;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #0b0d11;
+        color: #e9ecef;
+        font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+      }
+      header {
+        display: flex;
+        gap: 24px;
+        align-items: baseline;
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+      header h1 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+      #steps {
+        display: flex;
+        gap: 18px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        color: var(--dim);
+      }
+      #steps li.done {
+        color: var(--good);
+      }
+      #steps li.now {
+        color: #fff;
+        font-weight: 600;
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 20px;
+        padding: 20px;
+      }
+      @media (max-width: 900px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+      #preview {
+        display: block;
+        background: #000;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        image-rendering: pixelated;
+        cursor: crosshair;
+      }
+      #hint {
+        margin: 0 0 6px;
+        min-height: 2.6em;
+        font-size: 20px;
+        line-height: 1.3;
+      }
+      #status {
+        margin: 0 0 12px;
+        color: var(--dim);
+        font-variant-numeric: tabular-nums;
+      }
+      #legend {
+        display: grid;
+        gap: 4px;
+        margin: 12px 0 0;
+        padding: 0;
+        list-style: none;
+        font-size: 13px;
+        color: var(--dim);
+      }
+      #legend i {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin-right: 8px;
+        border-radius: 3px;
+        vertical-align: -1px;
+      }
+      #status.bad {
+        color: var(--bad);
+      }
+      fieldset {
+        margin: 0 0 14px;
+        padding: 12px 14px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      legend {
+        padding: 0 6px;
+        font-size: 12px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+      label {
+        display: grid;
+        grid-template-columns: 120px 1fr 44px;
+        gap: 8px;
+        align-items: center;
+        margin: 6px 0;
+      }
+      label.wide {
+        grid-template-columns: 120px 1fr;
+      }
+      label.tick {
+        grid-template-columns: auto 1fr;
+      }
+      input[type='text'],
+      input[type='number'],
+      select {
+        width: 100%;
+        padding: 5px 7px;
+        color: inherit;
+        background: #151920;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        font: inherit;
+      }
+      output {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        color: var(--dim);
+      }
+      button {
+        padding: 7px 12px;
+        color: inherit;
+        background: #1c222b;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      button.main {
+        color: #06222e;
+        background: var(--accent);
+        border-color: var(--accent);
+        font-weight: 600;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      #virtual canvas {
+        display: block;
+        width: 100%;
+        background: #151920;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .note {
+        margin: 8px 0 0;
+        font-size: 12px;
+        color: var(--dim);
+      }
+      #out {
+        margin: 8px 0 0;
+        max-height: 130px;
+        overflow: auto;
+        font: 12px/1.5 ui-monospace, Menlo, monospace;
+        color: var(--dim);
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Lidar · hands</h1>
+      <ol id="steps">
+        <li data-step="connect">1 Connect</li>
+        <li data-step="empty">2 Empty table</li>
+        <li data-step="calibrate">3 Calibrate</li>
+        <li data-step="live">4 Live</li>
+      </ol>
+    </header>
+    <main>
+      <section>
+        <p id="hint">Connecting…</p>
+        <p id="status"></p>
+        <canvas id="preview" width="720" height="460"></canvas>
+        <ul id="legend">
+          <li><i style="background: #6f7b8a"></i>What the lidar sees, from above. The lidar is the dot at the top.</li>
+          <li><i style="background: #ff9628"></i>Something over the table: a hand while it moves, an object once it has stood still for a second.</li>
+          <li><i style="border: 2px solid #5ad1ff"></i>Where the projected picture is, after calibration.</li>
+        </ul>
+      </section>
+      <aside>
+        <fieldset>
+          <legend>Lidar</legend>
+          <label class="wide"
+            >Source
+            <select id="source">
+              <option value="sim">Simulated (no hardware)</option>
+              <option value="http">Address, asked repeatedly</option>
+              <option value="ws">WebSocket stream</option>
+            </select>
+          </label>
+          <div id="remote">
+            <label class="wide">Address <input id="url" type="text" placeholder="/room-api/lidar" /></label>
+          </div>
+          <label>Every <input id="interval" type="range" min="40" max="500" step="10" /><output for="interval"></output></label>
+          <div class="row"><button id="connect" class="main">Connect</button></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Table</legend>
+          <div class="row" style="margin-top: 0"><button id="empty">Capture the empty table</button></div>
+          <label>Nearer by <input id="margin" type="range" min="20" max="300" step="10" /><output for="margin"></output></label>
+          <label class="tick"><input id="objects" type="checkbox" /> Things that stand still close streets (leave off if the depth camera does this)</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Calibration</legend>
+          <div class="row" style="margin-top: 0">
+            <button id="calibrate">Calibrate</button>
+            <button id="undo">Back one</button>
+            <button id="cancel">Cancel</button>
+          </div>
+          <p class="note" id="calibration"></p>
+        </fieldset>
+
+        <fieldset id="virtual">
+          <legend>Pretend table</legend>
+          <canvas id="pretend" width="320" height="200"></canvas>
+          <div class="row"><button id="onmarker">Touch the marker</button><button id="clear">Clear</button></div>
+          <p class="note">Drag: one hand. Shift-drag: two hands spreading from the middle. Click: put down or pick up a cup.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Sent to the table</legend>
+          <label class="tick"><input id="sending" type="checkbox" /> Send hand movements to the table</label>
+          <pre id="out"></pre>
+        </fieldset>
+      </aside>
+    </main>
+    <script type="module" src="/src/room/lidar.js"></script>
+  </body>
+</html>

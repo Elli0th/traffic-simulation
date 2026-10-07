@@ -1,0 +1,7 @@
+[out:json][timeout:60][bbox:57.678,11.925,57.725,12.01];
+(
+  way[route=ferry];
+  node[natural=tree];
+  way[railway=rail];
+);
+out geom;
