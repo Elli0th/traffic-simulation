@@ -2,7 +2,7 @@
 // numbers, how close each side is to winning, the curve of cases and where the virus is. It shows
 // nothing from either player's private panel, and no map: the map is on the table.
 
-import { TAKEOVER, DAY } from './virus.js';
+import { DAY } from './virus.js';
 
 export const DAYS = 60; // game days in a round
 const CELL = 100; // metres to a side of a square in "where the virus is"
@@ -19,9 +19,6 @@ export function boardState(game) {
     hospital: c.people.hospital,
     dead: c.people.dead,
     share: c.share,
-    goal: TAKEOVER,
-    approval: game.approval,
-    winner: game.winner,
     // The curve: [day, people infected then], one entry a game minute.
     history: game.history.map((h) => [Math.round((h[0] / DAY) * 100) / 100, Math.round(h[1] * k)]),
   };
@@ -62,8 +59,7 @@ const HTML = `
     <div class="tile"><label>Estimated deaths</label><b data-dead>0</b></div>
   </div>
   <div class="meters">
-    <div class="meter"><label>Caught the virus <b data-share style="color:#ff4545">0%</b></label><div class="bar"><i data-share-bar style="background:#ff4545"></i></div><small data-goal></small></div>
-    <div class="meter"><label>Government approval <b data-approval style="color:#ffc233">100%</b></label><div class="bar"><i data-approval-bar style="background:#ffc233;width:100%"></i></div><small>The Spreader wins if it reaches zero. Lockdowns and distancing cost approval.</small></div>
+    <div class="meter"><label>Caught the virus <b data-share style="color:#ff4545">0%</b></label><div class="bar"><i data-share-bar style="background:#ff4545"></i></div></div>
   </div>
   <div class="main">
     <div class="panel"><label>People infected, day by day</label><canvas data-chart></canvas></div>
@@ -173,15 +169,11 @@ export function startBoard(relay, size) {
     at('hospital').textContent = num(s.hospital);
     at('dead').textContent = num(s.dead);
     at('share').textContent = `${s.share < 0.1 ? Math.floor(s.share * 1000) / 10 : Math.floor(s.share * 100)}%`;
-    at('share-bar').style.width = `${Math.min(100, (s.share / s.goal) * 100)}%`;
-    at('goal').textContent = `The Spreader wins at ${Math.round(s.goal * 100)}% of the city.`;
-    at('approval').textContent = `${Math.ceil(s.approval)}%`;
-    at('approval-bar').style.width = `${Math.max(0, Math.min(100, s.approval))}%`;
+    at('share-bar').style.width = `${Math.min(100, s.share * 100)}%`;
     at('status').textContent = v.status;
     board.querySelector('.over').classList.toggle('show', Boolean(v.over));
     if (v.over) {
       at('win').textContent = v.over.win;
-      at('win').style.color = s.winner === 'spreader' ? '#ff4545' : '#50dda5';
       at('sum').textContent = v.over.sum;
     }
     drawChart(at('chart'), s.history);

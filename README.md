@@ -42,48 +42,67 @@ the table.
 
 ## Outbreak game (two players)
 
-Open http://localhost:5173/?game. Two side-by-side cameras show the same city and outbreak.
+Open http://localhost:5173/?game and choose **1 player** or **2 players** on the start menu (or skip the menu with `?game&players=1` or `?game&players=2`). In the 1 player game you are the Spreader and the computer plays the Curber (`src/curber-ai.js`). It uses the same actions, costs and cooldowns as a person, and is lenient on purpose: it ignores the outbreak until about 1% of the city has caught it, waits a week of game days before its first move, then acts every 4 to 8 days and aims its lockdowns imperfectly. The 1 player game is one full screen with a log on the right that says what the computer did and when, including when it first noticed the outbreak, and its lockdown circles are drawn on your map.
+
+In the 2 player game: Two side-by-side cameras show the same city and outbreak.
 Spreader is on the left, Curber on the right. Each has independent + / - / Whole map buttons,
 scroll zoom and right-drag pan. Actions target only their owner's map; selecting an action on one
 side never arms the other side. The top bar spans both sides and shows current infected (exposed
 plus infectious) and non-infected (susceptible plus recovered) totals. All people use red/green dots,
 including people currently indoors. Isolation and vaccination status are not revealed by dot colour.
-Only the Spreader sees party markers; only the Curber sees lockdown rings/closures. No opponent
+Only the Spreader sees party/worker pins; only the Curber sees lockdown pins and zones. No opponent
 action announcements are shown. Points, action buttons and cooldowns sit in covered panels; click
-Show / hide to open your panel, which closes when you choose an action. Only one panel opens at a time.
+Show / hide to open your panel. It stays open for rapid actions; only one panel opens at a time.
 A shared screen still lets someone physically look across; this is visual separation, not secure device privacy.
 Click a busy street to place four initial exposed people for free.
-The round runs three real minutes; at 30? that is 90 simulated minutes. All action timings below
+Hover before placement to see a dashed target area and nearest named landmark. Placed actions get
+numbered pins and colour-coded areas: dashed for pending, solid for active, faded for finished.
+My actions & effects shows countdowns, party infection counts and citywide vaccination/isolation
+progress. Click a pin or a local action row to zoom to its location. Repeat here reuses the last map
+location, respecting its action's cost and cooldown. Immediate click confirmation is distinct from
+the simulated delay before an intervention begins.
+
+Spreader can Rally supporters; Curber can Mobilise volunteers. Tap rapidly or hold to earn 0.3 points
+per accepted tap, capped at one reward every 3 simulated seconds per player (about 10 taps/sec at
+30x). The effort bar fills over 20 taps. Rewards stop when paused or the round ends, and never bypass
+an action's cooldown. Both players use the same reward rules.
+
+Outbreak mode uses a pedestrian/crossing-signal loop with quarter-second movement steps. It omits
+road-vehicle and transit simulation, decorative trees and expensive traffic metrics; the normal
+traffic simulation remains at `/`. Locked-down and isolated people stop moving. Rendering uses
+one pixel per CSS pixel and larger infection dots for clarity. Each player's static city image is cached
+until zoom, pan or resize changes their camera; ordinary frames only redraw moving people. Compare the loops with
+`node scripts/benchmark-game.mjs`; focused action tests use `node scripts/test-virus.mjs --actions-only`.
+
+The round runs three real minutes; at 30x that is 90 simulated minutes, representing 60 game days. All action timings below
 use simulated time. This is an accelerated fictional game model, not a prediction for any disease.
 
 Scale and realism: a round stands for 60 days (30× speed). Each simulated person stands for about 290 of Göteborg's 600,000 people, and the virus follows the original COVID-19 strain: 3 days until infectious, 8 days infectious, R0 of about 2.5, 5% needing a hospital bed, 0.7% dying. Counts are shown in real people. People live around homes and workplaces, so dense districts are crowded and risk there is scaled by how built-up the area is. Trams and buses carry the virus: people waiting at a stop mix with the passengers, so an infectious rider takes it to the next stop (infected vehicles turn red).
 
-**Who wins.** The Spreader wins the moment 30% of the city has caught the virus, or the
-government's approval reaches zero. The Curber wins by holding out until the three minutes are up, or
-by stamping the outbreak out. Both numbers are in the top bar. Approval only goes down: each lockdown
-in force costs 1.1 points a game day and social distancing 0.9, so a 20-day lockdown costs 22 of the
-100. Cars carry the virus too: a driver who sets off from among infectious people may infect one or
-two where the trip ends (the car turns red), which is how it jumps across the city.
+**No winner.** A round is a plain three minutes (60 game days): it does not end early when the virus
+spreads far or dies out, and ends with a summary of how far it went. The model retains the updated
+branch's car and transit infection hooks for full simulation runs; the lightweight playable loop
+omits vehicle movement as described above.
 
 | Player / key | Action | Delay | Effect / duration |
 | --- | --- | --- | --- |
 | Spreader Q + click | Start a party (10 pax) | Immediate | Ten nearest people within 300m; extra group contacts for 10m |
-| Spreader W | Antimask conspiracy | 5m | Contact transmission ?1.4 for 30m |
+| Spreader W | Antimask conspiracy | 5m | Contact transmission x1.4 for 30m |
 | Spreader E | Antivaxx conspiracy | 5m | Vaccine acceptance falls from 85% to 25% for 40m |
 | Spreader R + click | Send someone sick to work | Immediate | Nearest infectious person within 300m stays outside and evades isolation for 15m; lockdown still applies |
 | Curber I + click | Lockdown | 1m | 220m zone keeps 90% of people home for 30m and cancels party contacts there |
 | Curber O | Free vaccines | 2m | Citywide rollout for 30m; each unvaccinated person has an 85% / 600 per-second uptake chance (25% / 600 during antivaxx) |
-| Curber P | Social distancing | 1m | Ordinary transmission ?0.55 and party transmission ?0.45 for 30m |
-| Curber L | New hospitals | 10m | Permanent 0.3% per-second chance of isolating each infectious person |
+| Curber P | Social distancing | 1m | Ordinary transmission x0.55 and party transmission x0.45 for 30m |
+| Curber L | New hospitals | 10m | Permanently increases case detection and isolation |
 | Curber K | New vaccine | 20m | Permanent improvement from 65% to 90% susceptibility reduction for vaccinated people |
 
 Vaccination protects after another 5m and does not cure existing infections. Vaccinated people can
 still catch and transmit infection. A party adds a hazard of 0.004 per infectious attendee per second
 (about 21% risk over one minute with one infectious attendee, before protection/distancing).
-Ordinary close contact uses a hazard of 0.1 per second within 18m. These intentionally accelerated
+Ordinary close contact uses the updated branch's density-weighted transmission model. These accelerated
 rates depend on the actual crowd, movement and interventions; they are not fixed citywide infection rates.
-Incubation averages 90 seconds; infectious duration averages 30m, both with ?30% variation.
-Recovered people are immune for the round. Hospitals represent isolation capacity, not deaths or treatment outcomes.
+Incubation averages 3 game days; infectious duration averages 8 game days, both with +/-30% variation.
+Recovered people are immune for the round. Hospital demand and deaths are population estimates.
 Action costs, delays, durations and cooldowns are in `ACTIONS` in `src/virus.js`.
 
 **On the table, with the room's sensors.** Open the table with `/?game=table` and the screens with
@@ -103,7 +122,36 @@ the map: the clock, the shared totals, how close each side is to winning, the cu
 grid of where the virus is, not either player's private panel. To rehearse without the room, use the camera
 page's pretend table.
 
-## Planning a change
+### Reactive Philips Hue Lighting & Asymmetric TV Dashboards
+
+When running `?game`, the installation connects to the room's physical displays and Philips Hue bridge:
+
+1. **Reactive Philips Hue Ceiling Spots & TV Strips** (`src/room/hue-lights.js`):
+   - **Ceiling Spots (2–7)**: As the virus spreads, lights dynamically transition from calm clinic cyan (`hue ~ 40000`, brightness 70) through cautionary amber into intense, glaring emergency crimson (`hue ~ 0`, brightness 254).
+   - **TV 1 Strip (Light 1 - Spreader)**: Red/Orange glow that pulses to maximum brightness (254) whenever a super-spreader party or offensive conspiracy is launched.
+   - **TV 2 Strip (Light 8 - Curber)**: Protective cyan/blue shield that brightens as lockdowns and vaccination coverage expand.
+
+2. **Asymmetric Tactical Dashboards on Both Televisions** (`/dashboard.html`):
+   - **Television 1 (Spreader Strategic Command)**:
+     - **Recent Actions Feed**: Displays your last offensive strike with active countdown timer alongside enemy countermeasures detected.
+     - **Actionable Intel**: Ranks top 3 high-density unprotected districts (e.g. Nordstaden, Inom Vallgraven, Haga) to strike next.
+     - **Transit Vectors**: Tracks trams carrying infected passengers spreading the virus across the city.
+     - **Action Deck**: Real-time points, cooldown counters, and tactical recommendations.
+   - **Television 2 (Curber Public Health Defense)**:
+     - **Recent Actions Feed**: Displays your last quarantine/vaccine deployment alongside detected outbreak breaches.
+     - **Actionable Intel**: Pinpoints top active infection hotspots requiring immediate lockdown or contact tracing.
+     - **Healthcare Stress**: Tracks hospital bed capacity and ICU saturation level.
+     - **Vaccination Campaign**: Population immunity progress and disinformation resistance tracking.
+     - **Intervention Deck**: Real-time points, cooldown counters, and defensive recommendations.
+
+3. **Room Automation Command** (`scripts/room-virus.mjs`):
+   ```bash
+   # Point Table to ?game, TV 1 to Spreader Dashboard, TV 2 to Curber Dashboard
+   node scripts/room-virus.mjs show
+
+   # Reset all displays to idle and restore Hue lights to neutral ambient
+   node scripts/room-virus.mjs idle
+   ```
 
 The panel at the top right of the table window turns the map into a what-if tool. Choose a tool, then
 click a street (or, with the depth camera running, put an object on it):

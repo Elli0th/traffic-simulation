@@ -103,10 +103,17 @@ async function boot() {
   }
 
   const base = process.env.PAGE ?? `http://${sim ? 'host.docker.internal' : address}:${port}`;
-  await call('projector', '/show', { url: `${base}/?game=table` });
-  for (const tv of ['tv-1', 'tv-2']) await call(tv, '/show', { url: `${base}/?game&view=screen` });
+  await showGame(base);
   console.log('\nWhat the displays say now:');
   for (const name of Object.keys(DISPLAYS)) await call(name, '/status');
+}
+
+// The outbreak game: the table on the projector, and each player's own dashboard on a TV, the
+// Spreader's on the left one and the Curber's on the right (the same layout as scripts/room-virus.mjs).
+async function showGame(base) {
+  await call('projector', '/show', { url: `${base}/?game=table` });
+  await call('tv-1', '/show', { url: `${base}/dashboard.html?side=spreader` });
+  await call('tv-2', '/show', { url: `${base}/dashboard.html?side=curber` });
 }
 
 const [action = 'status', what = ''] = process.argv.slice(2);
@@ -116,8 +123,7 @@ if (action === 'boot') {
   const base = process.env.PAGE ?? `http://${laptop()}:5173`;
   if (what === 'game') {
     // The outbreak game keeps its panels: the players press them with hands and pieces.
-    await call('projector', '/show', { url: `${base}/?game=table` });
-    for (const tv of ['tv-1', 'tv-2']) await call(tv, '/show', { url: `${base}/?game&view=screen` });
+    await showGame(base);
   } else {
     const page = base + (what === 'draw' ? '/draw.html' : '/');
     const query = what && what !== 'draw' ? [what] : []; // for example map=west
