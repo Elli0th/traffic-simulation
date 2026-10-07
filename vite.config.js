@@ -1,4 +1,5 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
+import { live } from './scripts/live.mjs';
 
 // Passes messages between every window that has the app open (see src/room/relay.js), so the camera
 // page on the laptop can tell the table and the screens what is on the table.
@@ -24,8 +25,9 @@ const hueHost = process.env.HUE_IP || (process.env.ROOM_ENV === 'sim' ? 'localho
 // virtual room).
 const lidar = { target: process.env.ROOM_LIDAR ?? 'http://192.168.42.24', changeOrigin: true, ws: true, rewrite: (path) => path.replace(/^\/room-lidar/, '') };
 
-export default defineConfig({
-  plugins: [relay()],
+// The keys for live traffic are read from .env.local; see .env.example and scripts/live.mjs.
+export default defineConfig(({ mode }) => ({
+  plugins: [relay(), live({ ...loadEnv(mode, process.cwd(), ''), ...process.env })],
   server: {
     proxy: {
       '/room-lidar': lidar,
@@ -40,4 +42,4 @@ export default defineConfig({
   build: {
     rollupOptions: { input: ['index.html', 'camera.html', 'lidar.html', 'grid.html', 'draw.html', 'dashboard.html'] },
   },
-});
+}));

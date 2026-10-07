@@ -47,7 +47,9 @@ let problem = '';
 const slot = () => (config.source === 'sim' ? 'sim' : 'real');
 const calibration = () => config.calibrations[slot()] || null;
 
-function connect() {
+// `again` is the page trying a lost connection once more: the lidar has not moved, so the empty
+// table it learned and the calibration in progress still hold.
+function connect(again = false) {
   socket?.close();
   socket = null;
   latest = null;
@@ -64,7 +66,7 @@ function connect() {
     socket.onclose = () => {
       if (socket !== opened) return;
       problem = `No connection to the lidar at ${config.url}. Is this laptop on the room wifi? Trying again…`;
-      setTimeout(() => socket === opened && connect(), 2000);
+      setTimeout(() => socket === opened && connect(config.source === 'ws'), 2000);
     };
     // Each sweep is handed out once, however often the page asks.
     source = {
@@ -83,12 +85,13 @@ function connect() {
       },
     };
   }
+  gestures = new Gestures();
+  if (again) return;
   detector = new ScanDetector({ margin: Number(config.margin) });
   // The empty table as it was last captured, so that opening the page again needs no new capture.
   // (Capture it again if the table, the lidar or the furniture around them has moved.)
   const kept = config.source !== 'sim' && config.backgrounds?.[slot()];
   if (kept) detector.background = new Map(kept);
-  gestures = new Gestures();
   calibrator = null;
   relay.send('calibrate', { index: -1 });
   collecting = config.source === 'sim' ? [] : null;
@@ -251,7 +254,7 @@ const pretend = $('pretend');
 const pctx = pretend.getContext('2d');
 let cups = [];
 let hands = [];
-const place = () => (source.things = cups.concat(hands));
+const place = () => source && (source.things = cups.concat(hands));
 
 function drawPretend() {
   $('virtual').hidden = config.source !== 'sim';
@@ -343,9 +346,9 @@ for (const id of ['objects', 'sending']) {
     if (id === 'objects' && !config.objects) relay.send('blobs', { from: 'lidar', list: [] });
   });
 }
-$('connect').addEventListener('click', connect);
+$('connect').addEventListener('click', () => connect());
 $('empty').addEventListener('click', () => {
-  if (config.source === 'sim' && source?.things.length) {
+  if (config.source === 'sim' && source?.things?.length) {
     problem = 'The pretend table is not empty. Press Clear first, then capture it.';
     return;
   }
@@ -364,8 +367,14 @@ $('undo').addEventListener('click', () => {
 
 connect();
 async function loop() {
-  await tick();
-  draw();
+  // Whatever goes wrong with one sweep, the next is still read.
+  try {
+    await tick();
+    draw();
+  } catch (error) {
+    problem = `Something went wrong reading the lidar: ${error.message}`;
+    $('hint').textContent = problem;
+  }
   setTimeout(loop, Number(config.interval));
 }
 loop();

@@ -39,6 +39,7 @@ the table.
 | `T` | Jump one hour ahead |
 | `+` `-` | More or less traffic |
 | `H` `C` `F` | Hide the panel, clear all objects, fullscreen |
+| `L` | Live traffic on or off (needs keys, see Live traffic) |
 
 ## Outbreak game (two players)
 
@@ -185,6 +186,27 @@ causes heavy jams takes longer to compute. It covers road vehicles only.
 - **People**: pedestrians and cyclists on the mapped paths. They wait for the green man at signals, and
   drivers stop for them at zebra crossings.
 - **Day and night**: sunrise and sunset for early October, with lit windows and headlights after dark.
+
+## Live traffic
+
+With two free keys the map shows what Gothenburg is doing right now. Copy `.env.example` to
+`.env.local`, fill in the keys and restart `npm run dev`. The panel's "Live traffic" row then counts
+what is coming in, the clock follows the real time and the speed starts at 1×. `L` switches live
+traffic off and on; `?live=0` starts without it. With no keys nothing changes.
+
+| Source | What it gives | What the map does with it |
+| --- | --- | --- |
+| Trafikverket, road sensors | Speed and vehicles an hour at measuring sites on the big roads, every minute | Drivers within 400 m of a site go no faster than traffic there really is. The number of trips starting follows how full the measured lanes are, in place of the daily profile |
+| Trafikverket, incidents | Accidents, roadworks and other reports | A pulsing ring on the map: red for an accident, amber otherwise. An accident also takes a lane from its street and slows it to 30 km/h |
+| Västtrafik, vehicle positions | Where every tram, bus and ferry is, every five seconds | The real trams run on their tracks and road traffic gives way to them. The real buses and river ferries replace the simulated ones |
+
+The cars are still simulated, since nobody publishes where every car is; live traffic sets how many
+there are and how fast the measured roads move. The real buses are drawn where they are and the
+simulated cars do not see them. Compare still uses the daily profile for both of its runs. How full
+a lane counts as rush hour is one assumed number, `LANE_PEAK` in `src/live.js`.
+
+The dev server fetches the data (`scripts/live.mjs`), so the keys stay on the laptop and every
+window shares one answer. A built copy of the site has no server and runs simulated.
 
 ## In the room
 

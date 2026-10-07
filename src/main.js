@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Sim, LANE_WIDTH } from './sim.js';
 import { Trams, Ferries, inTunnel } from './transit.js';
 import { People } from './people.js';
+import { Live, cityClock } from './live.js';
 import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
@@ -32,8 +33,16 @@ const mapName = params.get('map');
 const map = await (await fetch(mapName && mapName !== 'central' ? `/gbg-${mapName}.json` : '/gbg.json')).json();
 const [WX, WZ] = map.size;
 const sim = new Sim(map);
-const trams = new Trams(map.tramLines, sim);
+const simTrams = new Trams(map.tramLines, sim);
 const ferries = new Ferries(map.ferries);
+// Live traffic: real sensor readings, incidents, trams, buses and ferries, when the server has keys
+// for them (see .env.example). ?live=0 starts without; L switches it on and off.
+const live = new Live(map, mapName, sim, simTrams.lines);
+// The outbreak game runs its own city and clock, so it never goes live.
+const liveAtStart = !params.has('game') && (await live.check()) && params.get('live') !== '0';
+if (liveAtStart) sim.clock = cityClock();
+// The trams on the map: the real ones while they are being reported, otherwise our own.
+const tramsNow = () => (live.vehiclesFresh ? live.trams : simTrams.trams);
 // About one person out walking for every 14 stretches of footpath, and one cyclist per 95.
 // In the outbreak game people live around homes and workplaces, so dense districts have the crowds.
 const gameMode = params.has('game') && params.get('view') !== 'screen';
@@ -50,7 +59,7 @@ const people = new People(map.paths, sim, {
 if (params.has('game')) for (const p of people.agents) pointAt(people.edges[p.edge], p.s, p);
 
 // ?game turns the table into a two-player outbreak: one player spreads a virus, the other curbs it.
-const game = gameMode ? new Outbreak(people, { sim, trams }) : null;
+const game = gameMode ? new Outbreak(people, { sim, trams: simTrams }) : null;
 let ai = null; // the computer's Curber, in the one-player game
 const lighting = gameMode ? new VirusLighting() : null;
 const actionHistory = [];
@@ -64,7 +73,7 @@ if (game) {
 function stepAll(dt) {
   if (game) { stepOutbreakWorld(sim, people, game, dt); ai?.step(); return; }
   sim.step(dt);
-  trams.step(dt);
+  if (!live.vehiclesFresh) simTrams.step(dt);
   ferries.step(dt);
   people.step(dt);
   game?.step(dt);
@@ -196,6 +205,18 @@ function pool(material, count, order = 0) {
   return mesh;
 }
 
+// Sets how many of a pool's boxes are drawn, and sends only those to the graphics card.
+function commit(mesh, n, colours = true) {
+  mesh.count = n;
+  if (!n) return;
+  for (const attribute of [mesh.instanceMatrix, colours && mesh.instanceColor]) {
+    if (!attribute) continue;
+    attribute.clearUpdateRanges();
+    attribute.addUpdateRange(0, n * attribute.itemSize);
+    attribute.needsUpdate = true;
+  }
+}
+
 // A box of size (length, height, width) centred at (x, y, z), pointing along (dx, dz).
 function putBox(mesh, k, x, y, z, dx, dz, l, h, w, color) {
   quat.setFromAxisAngle(yAxis, Math.atan2(-dz, dx));
@@ -298,6 +319,7 @@ const marker = (node, hex) => {
   return m;
 };
 const markers = game ? [] : [marker(sim.hospital, '#5ad1ff'), marker(sim.incident, '#ff9f1c')];
+const reportMarks = []; // one per incident reported by live traffic
 
 // The circle shown on the table during calibration: put an object on it.
 const target = new THREE.Group();
@@ -413,21 +435,45 @@ const fromTable = (b) => ({
   r: (b.r ?? 0.02) * zoom,
 });
 
-let speed = game ? 3 : 1; // index into SPEEDS
+let speed = game ? 3 : liveAtStart ? 0 : 1; // index into SPEEDS; live traffic is shown at the speed it happens
 let paused = false;
+
+function setLive(on) {
+  if (on === live.on) return;
+  if (on) {
+    live.start();
+    if (live.on) speed = 0;
+  } else live.stop();
+}
+setLive(liveAtStart);
 
 // ---------- the room: depth camera, calibration, other windows ----------
 
 let remote = []; // objects in metres, as told by the table window (screens only)
 let calibrating = null; // the calibration circle to show, in table coordinates
 // Objects can come from more than one sensor page (the depth camera, the lidar); keep each one's list.
-const sensed = {};
+const sensed = {}; // sensor -> { list, at }
+const SENSOR_QUIET = 5000; // milliseconds without a word before a sensor's objects are taken off the table
+function gather() {
+  external = Object.values(sensed).flatMap((s) => s.list);
+}
 relay.on('blobs', (message) => {
   if (follower) return;
-  if (Array.isArray(message)) sensed.depth = message;
-  else sensed[message.from] = message.list;
-  external = Object.values(sensed).flat();
+  const [from, list] = Array.isArray(message) ? ['depth', message] : [message.from, message.list];
+  sensed[from] = { list, at: performance.now() };
+  gather();
 });
+// The sensor pages repeat what they see several times a second. One that has stopped (closed, or cut
+// off from its sensor) would otherwise leave its last objects closing streets for good.
+setInterval(() => {
+  let dropped = false;
+  for (const from of Object.keys(sensed)) {
+    if (performance.now() - sensed[from].at < SENSOR_QUIET) continue;
+    delete sensed[from];
+    dropped = true;
+  }
+  if (dropped) gather();
+}, 1000);
 
 // Hands over the table, from the lidar page: drag the map, or spread two hands to zoom.
 // `pan` is how far the hand moved and `at` where it is, as fractions of the picture.
@@ -458,6 +504,7 @@ relay.on('who', () => {
 relay.on('state', (s) => {
   if (!follower) return;
   if (Math.abs(sim.clock - s.clock) > 20) sim.clock = s.clock;
+  if (s.live !== undefined) setLive(s.live);
   speed = s.speed;
   paused = s.paused;
   sim.demandScale = s.demand;
@@ -473,12 +520,15 @@ let sentAt = 0;
 function tellScreens(blobs, now) {
   if (follower) return;
   const world = blobs.map((b) => ({ x: Math.round(b.x), z: Math.round(b.z), r: Math.round(b.r) }));
-  const text = JSON.stringify(world);
-  if (text === sentWorld && now - sentAt < 2000) return;
+  const state = { speed, paused, demand: sim.demandScale, x: focus.x, z: focus.z, zoom, live: live.on };
+  const text = JSON.stringify([world, state]);
+  // A change is told at once (ten times a second at most, while the map is being dragged); otherwise
+  // everything is repeated every two seconds, for a screen that has only just opened.
+  if (now - sentAt < (text === sentWorld ? 2000 : 100)) return;
   sentWorld = text;
   sentAt = now;
   relay.send('world', world);
-  relay.send('state', { clock: sim.clock, speed, paused, demand: sim.demandScale, x: focus.x, z: focus.z, zoom });
+  relay.send('state', { ...state, clock: sim.clock });
 }
 
 // If the display's own browser is too slow to run the city, render it here instead: open this window
@@ -488,13 +538,19 @@ const pushTo = params.get('push');
 const pushSocket = pushTo?.startsWith('ws');
 const pushGap = 1000 / (Number(params.get('fps')) || (pushSocket ? 20 : 8));
 let pushAt = 0;
+let pushRetry = 0;
 let pushing = false;
 let frames = null;
 function pushFrame(now) {
   if (!pushTo || pushing || now < pushAt) return;
   pushAt = now + pushGap;
   if (pushSocket) {
-    if (!frames || frames.readyState > WebSocket.OPEN) frames = new WebSocket(pushTo);
+    if (!frames || frames.readyState > WebSocket.OPEN) {
+      // A display that is not answering is tried again once a second, not once a frame.
+      if (now < pushRetry) return;
+      pushRetry = now + 1000;
+      frames = new WebSocket(pushTo);
+    }
     // Not connected yet, or the last frame is still on its way: skip this one rather than queue it.
     if (frames.readyState !== WebSocket.OPEN || frames.bufferedAmount > 0) return;
   }
@@ -516,6 +572,7 @@ function pushFrame(now) {
 
 addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return; // typing an hour, not a shortcut
+  if (e.metaKey || e.ctrlKey || e.altKey) return; // the browser's own shortcuts: Cmd+C must not clear the table
   if (game && e.target instanceof HTMLButtonElement && (e.key === ' ' || e.key === 'Enter')) return;
   if (game) {
     if (e.key === ' ') { e.preventDefault(); paused = !paused; }
@@ -528,7 +585,8 @@ addEventListener('keydown', (e) => {
   const step = zoom * 0.08;
   if (e.key >= '1' && e.key <= '4') speed = Number(e.key) - 1;
   if (e.key === ' ') paused = !paused;
-  if (e.key === 't') sim.clock = (sim.clock + 3600) % 86400;
+  if (e.key === 't' && !live.on) sim.clock = (sim.clock + 3600) % 86400; // live traffic keeps the real time
+  if (e.key === 'l') setLive(!live.on);
   if (e.key === 'v') view = view === 'table' ? 'screen' : 'table';
   if (e.key === 'h') document.body.classList.toggle('nohud');
   if (e.key === 'c') window.table.clear();
@@ -647,18 +705,18 @@ el('plan-undo').addEventListener('click', () => {
 if (follower) el('plan').style.display = 'none';
 
 // Objects from the depth camera use the planning tool too: each newly placed one applies it once.
-const usedObjects = new Set();
+// An object is the same one as before if it is still within a few centimetres of where it was, so a
+// reading that wobbles does not apply the tool again and again.
+let usedObjects = []; // where the objects that have had their turn are, in table coordinates
 function objectsUseTool(list) {
-  const now = new Set();
+  const before = usedObjects;
+  usedObjects = [];
   for (const b of list) {
-    const key = `${Math.round(b.x * 50)},${Math.round(b.y * 50)}`;
-    now.add(key);
-    if (!usedObjects.has(key)) {
-      usedObjects.add(key);
-      useTool(fromTable(b));
-    }
+    const k = before.findIndex((u) => Math.hypot(u.x - b.x, u.y - b.y) < 0.03);
+    if (k >= 0) before.splice(k, 1);
+    else useTool(fromTable(b));
+    usedObjects.push({ x: b.x, y: b.y });
   }
-  for (const key of usedObjects) if (!now.has(key)) usedObjects.delete(key);
 }
 
 function drawPlan() {
@@ -678,12 +736,8 @@ function drawPlan() {
   // The road being drawn: a mark at each corner so far.
   const dot = Math.max(4, metresPerPixel() * 6);
   for (const [x, z] of sketch) putBox(newRoads, m++, x, 1.4, z, 1, 0, dot, 1, dot, NEW_ROAD);
-  planStrips.count = n;
-  planStrips.instanceMatrix.needsUpdate = true;
-  if (planStrips.instanceColor) planStrips.instanceColor.needsUpdate = true;
-  newRoads.count = m;
-  newRoads.instanceMatrix.needsUpdate = true;
-  if (newRoads.instanceColor) newRoads.instanceColor.needsUpdate = true;
+  commit(planStrips, n);
+  commit(newRoads, m);
 
   const count = edits.length;
   el('plan-hint').textContent = `${HINTS[tool]} ${count ? `${count} planned ${count === 1 ? 'change' : 'changes'}.` : ''}`;
@@ -699,6 +753,7 @@ function compare(hours) {
   const jobs = [{ edits: [], blobs: [] }, { edits, blobs: closures }];
   const results = [null, null];
   const progress = [0, 0];
+  const workers = [];
   const out = el('plan-result');
   for (const b of document.querySelectorAll('#compare-2, #compare-day')) b.disabled = true;
   jobs.forEach((job, k) => {
@@ -717,6 +772,14 @@ function compare(hours) {
         showComparison(results[0], results[1], start, hours);
       }
     };
+    worker.onerror = (event) => {
+      if (!comparing) return;
+      comparing = false;
+      for (const w of workers) w.terminate();
+      for (const b of document.querySelectorAll('#compare-2, #compare-day')) b.disabled = false;
+      out.innerHTML = `<p>The comparison could not be run: ${event.message || 'the simulation stopped'}.</p>`;
+    };
+    workers.push(worker);
     worker.postMessage({ mapUrl, start, hours, ...job });
   });
 }
@@ -779,7 +842,7 @@ let baseAmbulance = 0;
 let emergency = null;
 let metricsTimer = 0;
 
-const minSec = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+const minSec = (s) => `${Math.floor(Math.round(s) / 60)}:${String(Math.round(s) % 60).padStart(2, '0')}`;
 const hhmm = (s) => `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
 
 function timeOfDay(hour) {
@@ -792,8 +855,22 @@ function timeOfDay(hour) {
   return 'Night';
 }
 
-function story(m) {
+// What the live sources report, for the panel: one line of numbers and one sentence.
+function liveSummary() {
+  if (!live.on) return { line: live.available ? 'off (L)' : 'no keys', text: '' };
+  const parts = [];
+  if (live.sites) parts.push(`${live.sites} sensors`);
+  if (live.vehiclesFresh) parts.push(`${live.trams.length + live.buses.length + live.boats.length} vehicles`);
+  if (live.incidents.length) parts.push(`${live.incidents.length} ${live.incidents.length === 1 ? 'incident' : 'incidents'}`);
+  let text = live.sites ? `Live: the measured roads are at ${live.kmh} km/h with ${live.perLane} vehicles an hour in each lane.` : '';
+  const worst = live.incidents.find((r) => r.accident) || live.incidents[0];
+  if (worst) text += ` ${[worst.what || worst.type, worst.where].filter(Boolean).join(', ')}.`;
+  return { line: parts.join(' · ') || live.error || 'waiting…', text };
+}
+
+function story(m, now) {
   if (!m.closures) {
+    if (now) return `${now} Put something on the table to close a street.`;
     return `${timeOfDay(sim.clock / 3600)}: ${m.vehicles} vehicles at ${m.kmh} km/h on average. Put something on the table to close a street.`;
   }
   const parts = [`${m.closures} street ${m.closures === 1 ? 'segment is' : 'segments are'} closed.`];
@@ -809,6 +886,11 @@ function story(m) {
 }
 
 function updateMetrics() {
+  if (live.on && !follower) {
+    const real = cityClock();
+    if (Math.abs(sim.clock - real) > 3) sim.clock = real;
+  }
+  sim.liveBuses = live.vehiclesFresh;
   flowEma += (sim.flow() - flowEma) * 0.15;
   emergency = sim.emergency();
   const closures = sim.closures();
@@ -822,7 +904,8 @@ function updateMetrics() {
   metrics.congestion = 1 - flowEma;
   metrics.vehicles = sim.cars.length;
   metrics.kmh = Math.round(sim.meanSpeed());
-  metrics.trams = trams.trams.length;
+  metrics.trams = tramsNow().length;
+  metrics.live = live.on;
   metrics.people = out;
   metrics.closures = closures;
   metrics.diverted = sim.diverted;
@@ -841,7 +924,9 @@ function updateMetrics() {
   el('m-life').textContent = `${metrics.trams} · ${metrics.people}`;
   el('m-closed').textContent = `${closures} · ${metrics.diverted}`;
   el('m-amb').textContent = metrics.noRoute ? 'no route' : `${minSec(emergency.time)} min`;
-  el('story').textContent = story(metrics);
+  const summary = liveSummary();
+  el('m-live').textContent = summary.line;
+  el('story').textContent = story(metrics, summary.text);
   // Hook for lights, sound and the AI narrator.
   dispatchEvent(new CustomEvent('table-metrics', { detail: { ...metrics } }));
 }
@@ -922,7 +1007,7 @@ function drawVehicles(dt, time) {
 
   // Trams: three articulated sections following the track.
   const wideT = 1 + (S - 1) * 0.35;
-  for (const t of trams.trams) {
+  for (const t of tramsNow()) {
     if (n > MAX_PARTS - 9) break;
     for (let sec = 0; sec < 3; sec++) {
       const s = t.s - 5 - sec * 10.2;
@@ -935,8 +1020,21 @@ function drawVehicles(dt, time) {
     }
   }
 
-  // Ferries: the river shuttles, and the big ship to Denmark.
-  for (const b of ferries.boats) {
+  // The real buses, when they are being reported. They are drawn where they are; the simulated
+  // traffic does not see them.
+  const realFleet = live.vehiclesFresh;
+  if (realFleet) {
+    const bus = paint(PAINT.bus[0]);
+    for (const b of live.buses) {
+      if (n > MAX_PARTS - 2) break;
+      for (const [along, y, l, h, w, role] of PARTS.bus) {
+        putBox(bodies, n++, b.x + b.dx * along * S, y * S, b.z + b.dz * along * S, b.dx, b.dz, l * S, h * S, w * S, role ? GLASS : bus);
+      }
+    }
+  }
+
+  // Ferries: the river shuttles (the real ones when reported), and the big ship to Denmark.
+  for (const b of realFleet ? ferries.boats.filter((f) => f.big).concat(live.boats) : ferries.boats) {
     if (n > MAX_PARTS - 3) break;
     const L = b.big ? 170 : 30;
     const W = b.big ? 26 : 8;
@@ -952,12 +1050,8 @@ function drawVehicles(dt, time) {
     putBox(lamps, nl++, g.x, 0.3, g.z, g.dx, g.dz, along, 0.3, g.e.lanes * LANE_WIDTH - 0.4, SIGNAL[sim.signal(g.e)]);
   }
 
-  bodies.count = n;
-  bodies.instanceMatrix.needsUpdate = true;
-  bodies.instanceColor.needsUpdate = true;
-  lamps.count = nl;
-  lamps.instanceMatrix.needsUpdate = true;
-  lamps.instanceColor.needsUpdate = true;
+  commit(bodies, n);
+  commit(lamps, nl);
 }
 
 const STATE_COLOUR = [null, color('#ffb020'), color('#ff2d2d'), color('#39e6b0')];
@@ -992,9 +1086,7 @@ function drawPeople(mpp = metresPerPixel()) {
       else putBox(walkers, n++, x, 0.85 * S, z, p.dx, p.dz, 0.45 * S, 1.7 * S, 0.5 * S, c);
     }
   }
-  walkers.count = n;
-  walkers.instanceMatrix.needsUpdate = true;
-  walkers.instanceColor.needsUpdate = true;
+  commit(walkers, n);
 }
 
 // A flat strip over every stretch of an edge.
@@ -1018,8 +1110,7 @@ function drawClosures() {
   sim.edges.forEach((e, ei) => {
     if (e.blocked && !e.gone && (e.rev < 0 || ei < e.rev)) n = strips(closedStrips, n, MAX_STRIPS, e, 1, 9 + e.lanes * 3);
   });
-  closedStrips.count = n;
-  closedStrips.instanceMatrix.needsUpdate = true;
+  commit(closedStrips, n, false);
 }
 
 // Orange glow on streets that are taking far longer than they should, readable even when cars are specks.
@@ -1028,8 +1119,7 @@ function drawJams() {
   for (const e of sim.edges) {
     if (!e.blocked && e.cars.length > 1 && e.tt > 3 * e.free + 25) n = strips(jamStrips, n, MAX_JAMS, e, 0.8, 4 + e.lanes * 3);
   }
-  jamStrips.count = n;
-  jamStrips.instanceMatrix.needsUpdate = true;
+  commit(jamStrips, n, false);
 }
 
 function drawRoute(time) {
@@ -1048,8 +1138,7 @@ function drawRoute(time) {
       s -= e.len;
     }
   }
-  routeDots.count = n;
-  routeDots.instanceMatrix.needsUpdate = true;
+  commit(routeDots, n, false);
 }
 
 function drawOverlays(blobs, time) {
@@ -1063,6 +1152,17 @@ function drawOverlays(blobs, time) {
   for (let k = blobs.length; k < rings.length; k++) rings[k].visible = false;
 
   for (const m of markers) m.scale.setScalar(metresPerPixel() * 14 * (1 + Math.sin(time * 1.2) * 0.12));
+
+  // Reported incidents: red for an accident, amber for roadworks and everything else.
+  const reports = live.on ? live.incidents : [];
+  reports.forEach((r, k) => {
+    const m = (reportMarks[k] ||= marker(0, '#ffffff'));
+    m.visible = true;
+    m.material.color.set(r.accident ? '#ff3b30' : '#ffb020');
+    m.position.set(r.x, 2.5, r.z);
+    m.scale.setScalar(metresPerPixel() * (r.accident ? 16 : 9) * (1 + Math.sin(performance.now() / 300 + k) * 0.15));
+  });
+  for (let k = reports.length; k < reportMarks.length; k++) reportMarks[k].visible = false;
 
   target.visible = Boolean(calibrating) && !follower;
   if (target.visible) {
@@ -1574,6 +1674,7 @@ function advance(simSeconds) {
   // With a planning tool chosen, objects from the camera apply the tool instead of closing streets.
   const planning = tool !== 'object' && tool !== 'road' && !follower;
   if (planning) objectsUseTool(external);
+  else usedObjects = []; // whatever is put down once a tool is chosen again gets its turn
   const zones = game ? game.lockdowns.filter(z => (z.start || 0) <= game.time && z.until > game.time) : [];
   // Played on the table, objects are the game's pieces: they act through the game, not by closing the street under them.
   const blobs = mouse.blobs.concat(zones, follower ? remote : planning || tablePlay?.pieces ? [] : external.map(fromTable));
@@ -1646,6 +1747,7 @@ function frame(now) {
     if (roundTime === ROUND) { game.finish(); updateGame(); }
   }
   tablePlay?.update(dt, external);
+  live.step();
   const blobs = advance(paused ? 0 : dt * SPEEDS[speed]);
   draw(dt, blobs);
   if (touchCtx && lidarTouch) {
@@ -1708,7 +1810,9 @@ window.table = {
     return { x: focus.x, z: focus.z, across: zoom, mode: view };
   },
   sim,
-  trams,
+  trams: simTrams,
+  live,
+  setLive,
   people,
   metrics,
 };
