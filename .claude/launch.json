@@ -114,6 +114,17 @@
         "--strictPort"
       ],
       "port": 5243
+    },
+    {
+      "name": "game-room-record",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "live:record",
+        "--prefix",
+        ".claude/worktrees/game-room-api"
+      ],
+      "port": 5203
     }
   ]
 }
