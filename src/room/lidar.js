@@ -84,6 +84,10 @@ function connect() {
     };
   }
   detector = new ScanDetector({ margin: Number(config.margin) });
+  // The empty table as it was last captured, so that opening the page again needs no new capture.
+  // (Capture it again if the table, the lidar or the furniture around them has moved.)
+  const kept = config.source !== 'sim' && config.backgrounds?.[slot()];
+  if (kept) detector.background = new Map(kept);
   gestures = new Gestures();
   calibrator = null;
   relay.send('calibrate', { index: -1 });
@@ -107,6 +111,8 @@ async function tick() {
     if (collecting.length >= 12) {
       detector.setBackground(collecting);
       collecting = null;
+      config.backgrounds = { ...config.backgrounds, [slot()]: [...detector.background] };
+      save();
     }
   }
   detector.margin = Number(config.margin);
