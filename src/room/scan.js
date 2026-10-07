@@ -95,20 +95,16 @@ export class ScanDetector {
     }
   }
 
-  // Returns [{ x, y, width, compact: true }]: the middle of each thing in the fan. With `area` set to
-  // { x0, x1, y0, y1 } (millimetres from the lidar), readings outside it are ignored: people and
-  // chairs around the table are not on it.
+  // Returns [{ x, y, width, compact: true }]: the middle of each thing in the fan. With `keep` set to
+  // a function of (x, y) in millimetres from the lidar, readings it turns down are ignored: people
+  // and chairs around the table are not on it.
   detect(scan) {
     if (!this.background) return [];
     const hits = [];
-    const area = this.area;
+    const keep = this.keep;
     for (let i = 0; i < scan.angles.length; i++) {
       const r = scan.ranges[i];
-      if (area) {
-        const x = r * Math.cos(scan.angles[i]);
-        const y = r * Math.sin(scan.angles[i]);
-        if (x < area.x0 || x > area.x1 || y < area.y0 || y > area.y1) continue;
-      }
+      if (keep && !keep(r * Math.cos(scan.angles[i]), r * Math.sin(scan.angles[i]))) continue;
       const k = this.bin(scan.angles[i]);
       // The readings do not fall on the same angles every sweep, so look half a degree either side too.
       let far = this.background.get(k);

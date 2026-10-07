@@ -16,9 +16,10 @@ const config = {
   margin: 60,
   objects: true,
   sending: true,
-  // Where the table is from the room's lidar, in millimetres (x straight out along its 0° line, y to
-  // either side), with a good margin: nothing outside it is looked at. null looks everywhere.
-  area: { x0: -50, x1: 1300, y0: -950, y1: 950 },
+  // Millimetres from the room's lidar beyond which nothing is looked at, until calibration says
+  // exactly where the picture is: far enough to reach every corner of the table, whichever way the
+  // lidar faces, and short of the people and furniture around it.
+  reach: 1500,
   calibrations: {},
   ...JSON.parse(localStorage.getItem(KEY) || '{}'),
 };
@@ -122,7 +123,14 @@ async function tick() {
     }
   }
   detector.margin = Number(config.margin);
-  detector.area = config.source === 'sim' ? null : config.area;
+  // Once calibrated, only the projected picture and a hand's width around it is looked at.
+  const c = !calibrator && calibration();
+  const inPicture = (x, y) => {
+    const [u, v] = applyHomography(c.toTable, x, y);
+    return u > -0.08 && u < 1.08 && v > -0.08 && v < 1.08;
+  };
+  const reach = Number(config.reach) || 0;
+  detector.keep = config.source === 'sim' ? null : c ? inPicture : reach ? (x, y) => Math.hypot(x, y) < reach : null;
   blips = detector.steady(detector.detect(scan));
 
   if (calibrator) {
@@ -189,14 +197,13 @@ function draw() {
       const [x, y] = toPx(scan.ranges[i] * Math.cos(scan.angles[i]), scan.ranges[i] * Math.sin(scan.angles[i]));
       ctx.fillRect(x - 1, y - 1, 2, 2);
     }
-    if (detector.area) {
-      // The part of the room that is looked at.
-      const { x0, x1, y0, y1 } = detector.area;
-      const [ax, ay] = toPx(x0, y0);
-      const [bx, by] = toPx(x1, y1);
+    if (detector.keep && !(calibration() && !calibrator)) {
+      // How far out anything is looked at, before calibration.
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(ax, ay, bx - ax, by - ay);
+      ctx.beginPath();
+      ctx.arc(...toPx(0, 0), (Number(config.reach) / RANGE) * (preview.width / 2), 0, Math.PI * 2);
+      ctx.stroke();
     }
     const c = calibration();
     if (c && !calibrator) {
