@@ -1117,13 +1117,14 @@ function updateGame() {
   const left = Math.max(0, ROUND - roundTime);
   el('g-time').textContent = game.phase === 'setup' ? '3:00' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
   if (game.phase === 'running' && left <= 0) game.phase = 'over';
+  const R_ = game.history.length > 3 ? growth() : null;
   const shared = publicCounts(c);
   el('g-infected').textContent = num(Math.round(shared.infected * game.scale));
   el('g-noninfected').textContent = num(Math.round(shared.noninfected * game.scale));
   el('g-status').textContent =
     game.phase === 'setup'
       ? 'Spreader: click a busy street to place patient zero. Curber: get ready.'
-      : `Day ${Math.floor(game.time / DAY) + 1} of 60. ${num(c.people.ever)} of ${num(game.population)} people have caught it (${pct(c.share)}); ${num(c.people.active)} infected now, ${num(c.people.hospital)} needing a hospital bed, an estimated ${num(c.people.dead)} deaths.${c.iso ? ` ${num(Math.round(c.iso * game.scale))} isolating.` : ''}${R_ ? ` ${R_}` : ''}`;
+      : `Day ${Math.min(60, Math.floor(game.time / DAY) + 1)} of 60. ${num(c.people.ever)} of ${num(game.population)} people have caught it (${pct(c.share)}); ${num(c.people.active)} infected now, ${num(c.people.hospital)} needing a hospital bed, an estimated ${num(c.people.dead)} deaths.${c.iso ? ` ${num(Math.round(c.iso * game.scale))} isolating.` : ''}${R_ ? ` ${R_}` : ''}`;
   el('g-sp').textContent = Math.floor(game.points.spreader);
   el('g-cp').textContent = Math.floor(game.points.curber);
   for (const b of document.querySelectorAll('#game [data-act]')) {
