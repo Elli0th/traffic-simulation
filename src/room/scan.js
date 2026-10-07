@@ -11,11 +11,16 @@
 export function decodeScan(body) {
   let angles = [];
   let ranges = [];
-  const scan = body.scan ?? body.data ?? body;
+  const scan = body.scan ?? body.data ?? body.points ?? body;
   if (Array.isArray(scan)) {
     for (const p of scan) {
-      angles.push(Array.isArray(p) ? p[0] : p.angle ?? p.theta ?? p.a);
-      ranges.push(Array.isArray(p) ? p[1] : p.distance ?? p.range ?? p.dist ?? p.r ?? p.d);
+      if (Array.isArray(p)) {
+        angles.push(p.length >= 3 ? p[1] : p[0]);
+        ranges.push(p.length >= 3 ? p[2] : p[1]);
+      } else {
+        angles.push(p.angle ?? p.theta ?? p.a);
+        ranges.push(p.distance ?? p.range ?? p.dist ?? p.r ?? p.d);
+      }
     }
   } else if (scan.ranges) {
     const start = scan.angle_min ?? scan.angleMin ?? 0;

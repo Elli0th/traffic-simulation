@@ -13,6 +13,7 @@ import { startTablePlay } from './virus-table.js';
 import * as relay from './room/relay.js';
 import { VirusLighting } from './room/hue-lights.js';
 import { buildDashboardPayload } from './room/dashboard-data.js';
+import { LidarTouchController } from './room/lidar-touch.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
 const MAX_STEP = 0.12; // longest simulation step, in seconds, that keeps the driving model stable
@@ -51,6 +52,8 @@ const game = gameMode ? new Outbreak(people, { sim, trams }) : null;
 let ai = null; // the computer's Curber, in the one-player game
 const lighting = gameMode ? new VirusLighting() : null;
 const actionHistory = [];
+let touchCtx = null;
+let lidarTouch = null;
 if (game) {
   document.body.classList.add('game');
   window.addEventListener('beforeunload', () => lighting?.restoreNeutral());
@@ -1172,6 +1175,57 @@ if (game) {
     if (GAME_KEYS[e.key]) doAction(activeSide, GAME_KEYS[e.key]);
     if (e.key === 'Escape') { gameViews[activeSide].armed = null; toast(activeSide, 'Selection cancelled.'); updateGame(); }
   });
+
+  // Visual touch ripple canvas for projected table
+  const touchCanvas = document.createElement('canvas');
+  touchCanvas.id = 'touch-overlay';
+  touchCanvas.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:99;';
+  touchCanvas.width = innerWidth;
+  touchCanvas.height = innerHeight;
+  document.body.appendChild(touchCanvas);
+  touchCtx = touchCanvas.getContext('2d');
+  addEventListener('resize', () => {
+    touchCanvas.width = innerWidth;
+    touchCanvas.height = innerHeight;
+  });
+
+  // Real-time RPLIDAR C1 touch engine for table projection
+  lidarTouch = new LidarTouchController({
+    onTap: (side, u, v, screenX, screenY) => {
+      activeSide = side;
+      // 1. Check if a game button was tapped
+      const elAtPoint = document.elementFromPoint(screenX, screenY);
+      const actBtn = elAtPoint?.closest('#game button[data-act], #g-over button');
+      if (actBtn && !actBtn.disabled) {
+        if (actBtn.dataset.act) doAction(side, actBtn.dataset.act);
+        else actBtn.click();
+        return;
+      }
+      const revealBtn = elAtPoint?.closest('#game [data-reveal]');
+      if (revealBtn) {
+        const panel = revealBtn.closest('[data-player]');
+        if (panel) {
+          const open = !panel.classList.contains('revealed');
+          panel.classList.toggle('revealed', open);
+          revealBtn.setAttribute('aria-expanded', String(open));
+        }
+        return;
+      }
+      // 2. Map tap to map world coordinate
+      const fakeEvent = { clientX: screenX, clientY: screenY };
+      const p = pick(fakeEvent, side);
+      if (!p) return;
+      if (game.phase === 'setup' && side === 'spreader') {
+        doAction(side, 'seed', p);
+      } else if (gameViews[side].armed) {
+        doAction(side, gameViews[side].armed, p);
+      } else {
+        const def = side === 'spreader' ? 'party' : 'lockdown';
+        doAction(side, def, p);
+      }
+    },
+  });
+  lidarTouch.start();
 }
 
 const markerPoint = new THREE.Vector3();
@@ -1578,7 +1632,12 @@ function frame(now) {
   tablePlay?.update(dt, external);
   const blobs = advance(paused ? 0 : dt * SPEEDS[speed]);
   draw(dt, blobs);
-  tellScreens(blobs, now); pushFrame(now);
+  if (touchCtx && lidarTouch) {
+    touchCtx.clearRect(0, 0, innerWidth, innerHeight);
+    lidarTouch.drawRipples(touchCtx);
+  }
+  tellScreens(blobs, now);
+  pushFrame(now);
   requestAnimationFrame(frame);
 }
 el('loading').remove();
