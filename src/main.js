@@ -64,7 +64,8 @@ if (params.has('game')) for (const p of people.agents) pointAt(people.edges[p.ed
 // ?game turns the table into a two-player outbreak: one player spreads a virus, the other curbs it.
 const game = gameMode ? new Outbreak(people, { sim, trams: simTrams }) : null;
 let ai = null; // the computer's Curber, in the one-player game
-const lighting = gameMode ? new VirusLighting() : null;
+// ?lights=0 plays without touching the room's Hue lights, for a laptop that is on the room network.
+const lighting = gameMode && params.get('lights') !== '0' ? new VirusLighting() : null;
 const actionHistory = [];
 let touchCtx = null;
 let lidarTouch = null;
