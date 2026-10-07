@@ -1,5 +1,12 @@
 # Tangible Table · Göteborg
 
+> **Looking for the latest version?** The branch that got furthest is
+> [`game-room-api`](https://github.com/Elli0th/traffic-simulation/tree/game-room-api): the outbreak
+> game, the connection to the room and the streaming to its displays, with a guide to every branch in
+> its README. This branch, `room-api`, is the traffic simulation with the connection to the room and live traffic, before the game was added. It is kept for reference, and the
+> text below describes it as it was.
+
+
 A live traffic simulation of Gothenburg built for a projected table: put an object on a street and
 the street closes, and the city reacts around it. It comes with two maps, the city centre and a
 larger one that reaches Älvsborgsbron.
