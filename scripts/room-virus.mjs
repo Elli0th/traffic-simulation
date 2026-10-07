@@ -54,7 +54,7 @@ async function postJson(url, body) {
 }
 
 async function showAll() {
-  const tableUrl = `http://${LOCAL_IP}:${PORT}/?game`;
+  const tableUrl = `http://${LOCAL_IP}:${PORT}/?game=table`;
   const tv1Url = `http://${LOCAL_IP}:${PORT}/dashboard.html?side=spreader`;
   const tv2Url = `http://${LOCAL_IP}:${PORT}/dashboard.html?side=curber`;
 

@@ -1195,7 +1195,7 @@ if (game) {
       activeSide = side;
       // 1. Check if a game button was tapped
       const elAtPoint = document.elementFromPoint(screenX, screenY);
-      const actBtn = elAtPoint?.closest('#game button[data-act], #g-over button');
+      const actBtn = elAtPoint?.closest('#game button[data-act], #g-over button, #g-menu [data-players]');
       if (actBtn && !actBtn.disabled) {
         if (actBtn.dataset.act) doAction(side, actBtn.dataset.act);
         else actBtn.click();
