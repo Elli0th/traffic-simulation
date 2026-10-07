@@ -13,6 +13,7 @@
 //   ?size=1920x1200   the size of the frames sent (1280 wide by default)
 //   ?direct           use the display's /frames/direct (less work for it; plain sRGB only)
 //   ?map=west         passed on to the table page
+//   ?lights=0         passed on to the table page: the game leaves the room's Hue lights alone
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -31,7 +32,8 @@ document.documentElement.style.setProperty('--shape', String(shape));
 // ---------- what is shown: one of the two, never both ----------
 
 const view = $('view');
-const extra = params.get('map') ? `&map=${encodeURIComponent(params.get('map'))}` : '';
+// map and lights are the table page's own switches (lights=0 leaves the room's Hue lights alone).
+const extra = ['map', 'lights'].filter((k) => params.get(k)).map((k) => `&${k}=${encodeURIComponent(params.get(k))}`).join('');
 const MODES = { traffic: `/?nohud${extra}`, game: `/?game=table${extra}` };
 const KEY = 'tangible-table/stream-mode';
 
