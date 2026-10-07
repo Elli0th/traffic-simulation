@@ -84,6 +84,14 @@ page: the laptop streams the finished pictures to the projector and both TVs. St
    left and right, with the game window in front; the nudge is remembered. (The lidar page and
    its nine circles are still what the traffic view uses.)
 
+   **Measuring it instead of nudging.** The box is where the projected picture is, in millimetres
+   from the middle of the lidar: left edge, right edge (sideways, left negative), near edge, far
+   edge (straight out). Add `&lidarmm=1` to the stream page's address and put two fingers together on
+   each corner of the picture: the table writes that touch's `x` and `y`. Then give the four numbers
+   once, for example `&box=-715,725,160,1055`; it is remembered. A tape measure gives the same
+   numbers. If the two near corners do not read the same `y`, the lidar is turned or the picture is
+   not a rectangle, and no box will fit: straighten the lidar or the projector's keystone.
+
 3. **Play.** A touch presses what is under it as soon as the finger is down (about 0.1 s), once per touch: the menu, the action buttons, the
    power cards, Pause and Resume, End game. In a solo round the whole table is the one player's.
    The seismic trench takes two taps, its start and then its end (the mouse drags it).

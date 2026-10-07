@@ -34,12 +34,22 @@ export class LidarTouchController {
     this.feedbackUntil = 0;
 
     // Shifted minY/maxY by +100mm (from [50, 950] to [150, 1050]) to correct the 10cm vertical downward desync
-    this.tableBounds = options.tableBounds || {
-      minX: -720.0,
-      maxX: 720.0,
-      minY: 150.0,
-      maxY: 1050.0,
+    // Where the projected picture is, in millimetres from the lidar: x sideways from its centre, y
+    // straight out from it. Measured on the table and given once in the address, it is remembered:
+    //   ?box=-720,720,150,1050     left edge, right edge, near edge, far edge of the picture
+    // ?lidarmm=1 writes each touch's own x and y beside its ring, and looks 400 mm beyond the box, so
+    // a finger put on each corner of the picture reads the four numbers off the table itself.
+    const fixed = { minX: -720.0, maxX: 720.0, minY: 150.0, maxY: 1050.0 };
+    const asBox = (text) => {
+      const n = String(text || '').split(',').map(Number);
+      return n.length === 4 && n.every(Number.isFinite) && n[0] < n[1] && n[2] < n[3] ? { minX: n[0], maxX: n[1], minY: n[2], maxY: n[3] } : null;
     };
+    const given = asBox(urlParams?.get('box'));
+    if (given && typeof localStorage !== 'undefined') localStorage.setItem('lidar_table_box', urlParams.get('box'));
+    const kept = typeof localStorage !== 'undefined' ? asBox(localStorage.getItem('lidar_table_box')) : null;
+    this.tableBounds = options.tableBounds || given || kept || fixed;
+    this.showMm = Boolean(urlParams?.get('lidarmm'));
+    this.margin = this.showMm ? 400 : 40; // mm around the box that still counts
     this.clusterRadius = options.clusterRadius || 80.0; // mm
     this.minPoints = options.minPoints || 2;
     // A press counts as soon as the finger is down: when the lidar has seen it in two sweeps running
@@ -158,12 +168,12 @@ export class LidarTouchController {
       const minY = this.tableBounds.minY + this.yOffset;
       const maxY = this.tableBounds.maxY + this.yOffset;
 
-      // Check if within physical table projection box (with 40mm margin)
+      // Check if within physical table projection box (with a margin)
       if (
-        x >= minX - 40 &&
-        x <= maxX + 40 &&
-        y >= minY - 40 &&
-        y <= maxY + 40
+        x >= minX - this.margin &&
+        x <= maxX + this.margin &&
+        y >= minY - this.margin &&
+        y <= maxY + this.margin
       ) {
         candidates.push({ x, y });
       }
@@ -356,6 +366,13 @@ export class LidarTouchController {
       ctx.lineWidth = 2;
       ctx.globalAlpha = 0.7;
       ctx.stroke();
+      if (this.showMm) {
+        ctx.globalAlpha = 1;
+        ctx.font = '600 18px ui-monospace, monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = sx > window.innerWidth / 2 ? 'right' : 'left';
+        ctx.fillText(`x ${Math.round(touch.x)}  y ${Math.round(touch.y)} mm`, sx + (sx > window.innerWidth / 2 ? -26 : 26), Math.max(24, Math.min(window.innerHeight - 12, sy + 6)));
+      }
     }
     ctx.globalAlpha = 1.0;
   }

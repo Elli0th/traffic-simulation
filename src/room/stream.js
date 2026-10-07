@@ -19,6 +19,7 @@
 //   ?direct           use the displays' /frames/direct (less work for them; plain sRGB only)
 //   ?map=west         passed on to the table page
 //   ?lights=0         passed on to the table page: the game leaves the room's Hue lights alone
+//   ?box=…  ?lidarmm=1  passed on to the game: where the picture is for the lidar (see lidar-touch.js)
 
 import * as relay from './relay.js';
 
@@ -33,7 +34,7 @@ document.body.classList.toggle('table-only', tableOnly);
 // ---------- the pictures: what each display's frame holds ----------
 
 // map and lights are the table page's own switches (lights=0 leaves the room's Hue lights alone).
-const extra = ['map', 'lights'].filter((k) => params.get(k)).map((k) => `&${k}=${encodeURIComponent(params.get(k))}`).join('');
+const extra = ['map', 'lights', 'box', 'lidarmm'].filter((k) => params.get(k)).map((k) => `&${k}=${encodeURIComponent(params.get(k))}`).join('');
 const PAGES = {
   traffic: { projector: `/?nohud${extra}`, 'tv-1': `/?view=screen&nohud${extra}`, 'tv-2': `/?view=screen&nohud${extra}` },
   // tv=2 lets the right TV follow the player's role in a solo round; the left one turns to the 3D city by itself.
