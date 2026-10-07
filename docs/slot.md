@@ -1,16 +1,22 @@
-# Our slot: calibrate and watch the inputs
+# A slot in the room
 
-The plan for the slot is to calibrate the lidar properly and record what it sees, not to show the
-game. The projector shows a light test card by address; nothing is streamed to it.
+Two kinds of slot are described here. The one that shows the game is **A slot that shows the game**,
+further down, and is the one to use. The first part is the older slot for calibrating the lidar page
+and recording what it sees; that calibration now only matters for the traffic view, since the game
+reads the lidar itself with a fixed table box.
 
-Run everything from the live folder, `.claude/worktrees/game-room-api`.
+Run everything from this folder.
 
-## Before the slot (no hardware needed)
+## Calibrating the lidar page and recording (traffic view)
+
+The projector shows a light test card by address; nothing is streamed to it.
+
+### Before the slot (no hardware needed)
 
 1. The laptop is on the room wifi `AID-Hackathon-5G` (an address starting 192.168.42).
 2. Brave is the browser for the lidar page: it holds the saved empty table and calibration.
 
-## In the slot
+### In the slot
 
 1. **Start the server, recording.**
 
