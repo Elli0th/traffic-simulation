@@ -34,7 +34,7 @@ Open http://localhost:5173/?game for a Plague Inc-style game on the same map. Th
 virus and upgrades it; the Curber locks down zones, vaccinates, masks up and tests. People catch it
 from infectious people near them while they are outdoors. Red is infectious, amber exposed, teal
 recovered or vaccinated, white isolating. Glowing squares show where it is when people are too small
-to see. There is no winner: a round runs 3 minutes (30× speed) and ends with a summary of how far it spread.
+to see. There is no winner: a round runs 3 minutes and stands for 60 days (30× speed). Each simulated person stands for about 290 of Göteborg's 600,000 people, and the virus follows the original COVID-19 strain: 3 days until infectious, 8 days infectious, R0 of about 2.5, 5% needing a hospital bed, 0.7% dying. Counts are shown in real people. People live around homes and workplaces, so dense districts are crowded and risk there is scaled by how built-up the area is. Trams and buses carry the virus: people waiting at a stop mix with the passengers, so an infectious rider takes it to the next stop (infected vehicles turn red).
 
 | Key | Spreader | Key | Curber |
 | --- | --- | --- | --- |

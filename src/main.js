@@ -5,7 +5,7 @@ import { People } from './people.js';
 import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
-import { Outbreak } from './virus.js';
+import { Outbreak, DAY } from './virus.js';
 import * as relay from './room/relay.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
@@ -26,13 +26,17 @@ const sim = new Sim(map);
 const trams = new Trams(map.tramLines, sim);
 const ferries = new Ferries(map.ferries);
 // About one person out walking for every 14 stretches of footpath, and one cyclist per 95.
+// In the outbreak game people live around homes and workplaces, so dense districts have the crowds.
+const gameMode = params.has('game') && params.get('view') !== 'screen';
+const anchors = gameMode ? [...sim.homes, ...sim.works].map((i) => [sim.nodes[i].x, sim.nodes[i].z]) : null;
 const people = new People(map.paths, sim, {
   walkers: Math.round(map.paths.edges.length * 0.072),
   cyclists: Math.round(map.paths.edges.length * 0.0105),
+  anchors,
 });
 
 // ?game turns the table into a two-player outbreak: one player spreads a virus, the other curbs it.
-const game = params.has('game') && params.get('view') !== 'screen' ? new Outbreak(people) : null;
+const game = gameMode ? new Outbreak(people, { sim, trams }) : null;
 if (game) document.body.classList.add('game');
 
 function stepAll(dt) {
@@ -787,7 +791,7 @@ function drawVehicles(dt, time) {
     const { rx, rz } = car;
 
     for (const [along, y, l, h, w, role] of PARTS[car.kind]) {
-      const c = role === 0 ? car.paint : role === 1 ? GLASS : role === 2 ? WHITE : RED;
+      const c = role === 0 ? (game && car.load > 0.08 ? RED : car.paint) : role === 1 ? GLASS : role === 2 ? WHITE : RED;
       putBox(bodies, n++, rx + dx * along * S, y * S, rz + dz * along * S, dx, dz, l * S, h * S, w * S, c);
     }
     const half = (car.len / 2) * S;
@@ -820,7 +824,7 @@ function drawVehicles(dt, time) {
       if (s < 0) break;
       if (inTunnel(t.line, s)) continue;
       pointAt(t.line.path, s, P);
-      putBox(bodies, n++, P.x, 1.05 * wideT, P.z, P.dx, P.dz, 9.8, 1.5 * wideT, 2.4 * wideT, TRAM_BLUE);
+      putBox(bodies, n++, P.x, 1.05 * wideT, P.z, P.dx, P.dz, 9.8, 1.5 * wideT, 2.4 * wideT, game && t.load > 0.08 ? RED : TRAM_BLUE);
       putBox(bodies, n++, P.x, 2.15 * wideT, P.z, P.dx, P.dz, 9.2, 0.75 * wideT, 2.44 * wideT, GLASS);
       putBox(bodies, n++, P.x, 2.95 * wideT, P.z, P.dx, P.dz, 9.6, 0.85 * wideT, 2.3 * wideT, WHITE);
     }
@@ -1033,6 +1037,7 @@ if (game) {
   // The first seed is free; until it is placed, the city just runs.
 }
 
+const num = (n) => n.toLocaleString('en-GB');
 const pct = (x) => `${Math.round(x * 1000) / 10}%`;
 const ROUND = 180; // real seconds a round runs once the virus is seeded
 let roundTime = 0;
@@ -1048,7 +1053,7 @@ function updateGame() {
   el('g-status').textContent =
     game.phase === 'setup'
       ? 'Spreader: click a busy street to place patient zero. Curber: get ready.'
-      : `${pct(c.share)} of the city has caught it. ${c.active} active${c.iso ? `, ${c.iso} isolating` : ''}.${R_ ? ` ${R_}` : ''}`;
+      : `Day ${Math.floor(game.time / DAY) + 1} of 60. ${num(c.people.ever)} of ${num(game.population)} people have caught it (${pct(c.share)}); ${num(c.people.active)} infected now, ${num(c.people.hospital)} needing a hospital bed, an estimated ${num(c.people.dead)} deaths.${c.iso ? ` ${num(Math.round(c.iso * game.scale))} isolating.` : ''}${R_ ? ` ${R_}` : ''}`;
   el('g-sp').textContent = Math.floor(game.points.spreader);
   el('g-cp').textContent = Math.floor(game.points.curber);
   for (const b of document.querySelectorAll('#game [data-act]')) {
@@ -1067,24 +1072,24 @@ function updateGame() {
   if (game.phase === 'over' && !el('g-over').classList.contains('show')) {
     el('g-win').textContent = "Time's up";
     const peak = game.history.reduce((a, h) => (h[1] > a[1] ? h : a), [0, 0]);
-    el('g-sum').textContent = `In ${Math.round(game.time / 60)} simulated minutes ${pct(c.share)} of the city caught it. Cases peaked at ${peak[1]} after ${Math.round(peak[0] / 60)} minutes. Vaccinated or recovered: ${c.r}.`;
+    el('g-sum').textContent = `In ${Math.round(game.time / DAY)} days ${num(c.people.ever)} of ${num(game.population)} people (${pct(c.share)}) caught the virus. Cases peaked at ${num(Math.round(peak[1] * game.scale))} on day ${Math.round(peak[0] / DAY)}. An estimated ${num(c.people.dead)} died, and ${num(c.people.immune)} are immune.`;
     el('g-over').classList.add('show');
     paused = true;
   }
 }
 
-// Plain-words reading of how fast it is growing, from the last ten simulated minutes.
+// Plain-words reading of how fast it is growing, from the last week of game days (history is one entry a minute).
 function growth() {
   const h = game.history;
-  const a = h[h.length - 1][1];
-  const b = h[Math.max(0, h.length - 11)][1];
-  if (a === 0) return 'Contained.';
-  if (b === 0) return '';
-  const ratio = a / b;
-  if (ratio > 1.15) return `Growing fast: cases up ${Math.round((ratio - 1) * 100)}% in 10 min.`;
-  if (ratio > 1.02) return 'Still growing.';
-  if (ratio > 0.9) return 'Levelling off.';
-  return 'Shrinking.';
+  const last = h[h.length - 1];
+  const prev = h[Math.max(0, h.length - 11)];
+  if (last[1] === 0) return 'Contained.';
+  if (prev[1] === 0 || last[0] === prev[0]) return '';
+  const days = (last[0] - prev[0]) / DAY;
+  const rate = Math.log(last[1] / prev[1]) / days; // per day
+  if (rate > 0.03) return `Doubling every ${(Math.LN2 / rate).toFixed(1)} days.`;
+  if (rate > -0.03) return 'Levelling off.';
+  return `Halving every ${(Math.LN2 / -rate).toFixed(1)} days.`;
 }
 
 function drawChart() {
