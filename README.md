@@ -367,7 +367,10 @@ Map data © OpenStreetMap contributors.
   confirmed, blue with a tail for a dragging hand, amber for an object; in the game a ring that fills
   for a held finger, a burst marked `tap` or `hold` for a click, and a dashed ring for what is too wide.
 - **Streaming** (`/stream.html`): the table rendered on the laptop and sent to a display over its
-  WebSocket, at most 30 frames a second. One window with a Traffic / Outbreak game toggle; only the
+  WebSocket, at most 30 frames a second. The dev server holds the WebSocket and answers each frame
+  once the display has received it (`scripts/frame-relay.mjs`), so a slow wifi gives fewer frames
+  instead of a picture that falls behind, and the page lowers the JPEG quality, then the size, until
+  30 a second get through. One window with a Traffic / Outbreak game toggle; only the
   one chosen runs. Nothing is sent until Start streaming is pressed and the browser is allowed to
   share the tab. `?stream` on the game address is the lighter variant that sends the map without
   the panels; it is off unless asked for.

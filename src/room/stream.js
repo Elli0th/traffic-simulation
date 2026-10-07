@@ -5,10 +5,10 @@
 // One window, one stream: the picture is a frame holding the table page, and the buttons swap what
 // that frame shows. Only the one chosen is loaded, so only that one runs. The stream carries on
 // across the swap. Frames go to the display's /frames WebSocket as JPEGs, never more than 30 a
-// second, and a frame is skipped rather than queued if the last one has not left yet.
+// second, and a frame is skipped rather than queued while the display still has two to receive.
 //
 //   ?display=tv-1     which display (projector by default); passed on by the dev server
-//   ?to=ws://…        a WebSocket address to send to instead
+//   ?q=0.6            a fixed JPEG quality; without it the quality and size follow what the wifi carries
 //   ?fps=20           fewer frames a second
 //   ?size=1920x1200   the size of the frames sent (1280 wide by default)
 //   ?direct           use the display's /frames/direct (less work for it; plain sRGB only)
@@ -24,9 +24,9 @@ const shape = SHAPES[display] || 1.6;
 const [W, H] = params.get('size')?.split('x').map(Number).filter(Boolean).length === 2
   ? params.get('size').split('x').map(Number)
   : [1280, Math.round(1280 / shape)];
-const target =
-  params.get('to') ||
-  `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/room-display/${display}/frames${params.has('direct') ? '/direct' : ''}`;
+// Frames go through the dev server (scripts/frame-relay.mjs), which holds the display's WebSocket and
+// answers each frame once the display has received it.
+const target = `/room-frame/${display}${params.has('direct') ? '?direct' : ''}`;
 document.documentElement.style.setProperty('--shape', String(shape));
 
 // ---------- what is shown: one of the two, never both ----------
@@ -85,48 +85,69 @@ canvas.height = H;
 const ctx = canvas.getContext('2d', { alpha: false });
 
 let capture = null; // the browser's picture of this tab
-let socket = null;
-let retryAt = 0;
 let timer = 0;
 let encoding = false;
+let inFlight = 0; // frames sent that the display has not yet said it has
 let sent = 0;
+let bytes = 0;
 let skipped = 0;
 let rate = 0;
+let megabits = 0;
 let problem = '';
-
-function connect(now) {
-  if (socket && socket.readyState <= WebSocket.OPEN) return;
-  if (now < retryAt) return;
-  retryAt = now + 1000; // a display that is not answering is tried once a second, not once a frame
-  const opened = (socket = new WebSocket(target));
-  opened.binaryType = 'arraybuffer';
-  opened.onopen = () => (problem = '');
-  opened.onclose = () => {
-    if (socket === opened && capture) problem = `No connection to the ${display}. Trying again…`;
-  };
-}
+// How much picture each frame carries. Both come down when the wifi cannot carry 30 frames a second,
+// and back up when it can: a softer picture on time is better on the table than a sharp one late.
+let quality = Math.min(0.85, Math.max(0.3, Number(params.get('q')) || 0.7));
+let scale = 1;
 
 function frame() {
-  const now = performance.now();
-  connect(now);
   if (!capture || !video.videoWidth) return;
-  // Still sending or encoding the last one: this frame is dropped, so the picture never falls behind.
-  if (encoding || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > 0) {
+  // The display still has two to receive, or the last one is still being encoded: this frame is
+  // dropped, so the picture never falls behind.
+  if (encoding || inFlight >= 2) {
     skipped++;
     return;
   }
-  ctx.drawImage(video, 0, 0, W, H);
+  const w = Math.round((W * scale) / 2) * 2;
+  const h = Math.round((H * scale) / 2) * 2;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  ctx.drawImage(video, 0, 0, w, h);
   encoding = true;
   canvas.toBlob(
-    (blob) => {
+    async (blob) => {
       encoding = false;
-      if (!blob || !capture || socket.readyState !== WebSocket.OPEN) return;
-      socket.send(blob);
-      sent++;
+      if (!blob || !capture) return;
+      inFlight++;
+      try {
+        const answer = await (await fetch(target, { method: 'POST', body: blob })).json();
+        if (answer.ok) {
+          sent++;
+          bytes += blob.size;
+          problem = '';
+        } else if (capture) problem = `${answer.why[0].toUpperCase()}${answer.why.slice(1)}. Trying again…`;
+      } catch {
+        if (capture) problem = 'The dev server is not answering.';
+      } finally {
+        inFlight--;
+      }
     },
     'image/jpeg',
-    0.75,
+    quality,
   );
+}
+
+// Once a second: is the display getting its frames? If not, send less picture; if so, send more again.
+function adapt() {
+  if (!capture || problem || params.has('q')) return;
+  if (rate < fps * 0.9) {
+    if (quality > 0.4) quality = Math.max(0.4, quality - 0.08);
+    else scale = Math.max(0.6, scale - 0.1);
+  } else if (rate >= fps * 0.97) {
+    if (scale < 1) scale = Math.min(1, scale + 0.05);
+    else quality = Math.min(0.75, quality + 0.02);
+  }
 }
 
 async function start() {
@@ -165,8 +186,7 @@ function stop() {
   clearInterval(timer);
   for (const track of capture?.getTracks() || []) track.stop();
   capture = null;
-  socket?.close();
-  socket = null;
+  fetch('/room-frame-stop', { method: 'POST' }).catch(() => {});
   document.body.classList.remove('bare');
   $('start').hidden = false;
   $('stop').hidden = true;
@@ -177,7 +197,7 @@ function describe() {
   const status = $('status');
   if (problem) status.textContent = problem;
   else if (!capture) status.textContent = 'Not streaming. Only what is chosen on the left is running.';
-  else status.textContent = `Streaming to the ${display}: ${rate} frames a second, ${W} × ${H}${skipped ? ` (the display is keeping up with ${Math.round((100 * rate) / fps)}%)` : ''}`;
+  else status.textContent = `Streaming to the ${display}: ${rate} of ${fps} frames a second, ${canvas.width} × ${canvas.height}, quality ${Math.round(quality * 100)}, ${megabits.toFixed(1)} Mbit/s`;
   status.className = problem ? 'bad' : capture ? 'live' : '';
 }
 
@@ -185,7 +205,10 @@ $('start').addEventListener('click', start);
 $('stop').addEventListener('click', stop);
 setInterval(() => {
   rate = sent;
+  megabits = (bytes * 8) / 1e6;
   sent = 0;
+  bytes = 0;
+  adapt();
   describe();
   skipped = 0;
 }, 1000);

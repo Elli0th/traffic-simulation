@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import { live } from './scripts/live.mjs';
 import { recorder } from './scripts/recorder.mjs';
+import { frameRelay } from './scripts/frame-relay.mjs';
 
 // Passes messages between every window that has the app open (see src/room/relay.js), so the camera
 // page on the laptop can tell the table and the screens what is on the table.
@@ -62,7 +63,7 @@ const displays = {
 };
 
 export default defineConfig(({ mode }) => ({
-  plugins: [relay(), clientLog(), recording, live({ ...loadEnv(mode, process.cwd(), ''), ...process.env })],
+  plugins: [relay(), clientLog(), recording, frameRelay(displays), live({ ...loadEnv(mode, process.cwd(), ''), ...process.env })],
   server: {
     proxy: {
       '/room-lidar': lidar,
