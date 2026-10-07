@@ -125,6 +125,27 @@
         ".claude/worktrees/game-room-api"
       ],
       "port": 5203
+    },
+    {
+      "name": "game-sim",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ROOM_ENV=sim",
+        "PROJECTOR=http://localhost:8031",
+        "TV1=http://localhost:8022",
+        "TV2=http://localhost:8023",
+        "ROOM_LIDAR=http://localhost:8024",
+        "npm",
+        "run",
+        "dev",
+        "--prefix",
+        ".claude/worktrees/game-room-api",
+        "--",
+        "--port",
+        "5253",
+        "--strictPort"
+      ],
+      "port": 5253
     }
   ]
 }
