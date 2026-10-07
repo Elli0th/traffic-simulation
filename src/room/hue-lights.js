@@ -144,10 +144,9 @@ export class VirusLighting {
 
   async setLight(id, body) {
     const json = JSON.stringify(body);
-    const urls = [
-      `${this.endpoint}/api/${HUE_USER}/lights/${id}/state`,
-      `http://${this.directIp}/api/${HUE_USER}/lights/${id}/state`,
-    ];
+    // Only through the dev server, which knows whether it is pointed at the room or at the virtual room:
+    // a page that fell back to the bridge's own address would change the real lights from a rehearsal.
+    const urls = [`${this.endpoint}/api/${HUE_USER}/lights/${id}/state`];
 
     for (const url of urls) {
       try {

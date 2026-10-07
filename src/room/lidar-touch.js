@@ -10,14 +10,15 @@ import { decodeScan } from './scan.js';
 
 export class LidarTouchController {
   constructor(options = {}) {
-    // The second address is the dev server passing the lidar on (/room-lidar in vite.config.js), for a
-    // browser that is not allowed to open an address on the local network itself.
+    // First the dev server passing the lidar on (/room-lidar in vite.config.js): it knows whether it is
+    // pointed at the room or the virtual room, and a browser on the laptop may not be allowed to open an
+    // address on the local network itself.
     const viaServer = typeof location !== 'undefined' && location.protocol.startsWith('http')
       ? [`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/room-lidar/scan`]
       : [];
     this.urls = options.urls || [
-      'ws://192.168.42.24/scan',
       ...viaServer,
+      'ws://192.168.42.24/scan',
       'ws://pi-lidar.local/scan',
       'ws://localhost:8024/scan',
     ];

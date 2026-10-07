@@ -3,8 +3,8 @@
 //
 //   npm run room boot            everything for the outbreak game in one go: checks the wifi, the dev
 //                                server and the lidar, opens the stream page (the table
-//                                is streamed from this laptop, never run by the projector), dashboards on the TVs
-//   npm run room show            the stream page for the table, 3D view on both TVs
+//                                and the TVs are streamed from this laptop, never run by the displays)
+//   npm run room show            the stream page for the traffic view: table and both TVs
 //   npm run room show game       the two-player outbreak game
 //   npm run room show draw       light painting instead of the city
 //   npm run room show check      the test card on the projector only: calibration circles, rings for
@@ -113,10 +113,10 @@ async function serverPort() {
   return 5173;
 }
 
-// The table's picture is never run by the projector's own computer (a Raspberry Pi, too slow for it):
-// it runs in the stream page on this laptop and is sent to the projector frame by frame. Starting the
-// stream takes a click in the browser, so this opens the page and says so; nothing reaches the
-// projector until then.
+// Nothing is run by the displays' own computers (Raspberry Pis, too slow for it): the table and both
+// TVs run in the stream page on this laptop and are sent to the displays frame by frame. Starting the
+// stream takes a click in the browser, so this opens the page and says so; nothing reaches a display
+// until then.
 function openStream(port, mode) {
   const page = `http://localhost:${port}/stream.html?mode=${mode}`;
   try {
@@ -126,17 +126,14 @@ function openStream(port, mode) {
   } catch {
     console.log(`     Open ${page} yourself.`);
   }
-  console.log('     Press "Start streaming" there and allow it to share the tab: that puts the table on the projector.');
+  console.log('     Press "Start streaming" there and allow it to share the tab: that puts the table on the projector and both TV pictures on the TVs.');
   console.log('     Keep that window visible: a hidden tab is slowed down by the browser.');
 }
 
-// The outbreak game: the table streamed from this laptop, and each player's own dashboard on a TV,
-// the Spreader's on the left one and the Curber's on the right (the same layout as scripts/room-virus.mjs).
+// The outbreak game: the table and each player's dashboard (the Spreader's on the left TV, the Curber's
+// on the right), all three run in the stream page on this laptop and streamed from there.
 async function showGame(base, port) {
   openStream(port, 'game');
-  await call('tv-1', '/show', { url: `${base}/dashboard.html?side=spreader` });
-  // tv=2 lets this one follow the player's role in a solo round; the left TV turns to the 3D city by itself.
-  await call('tv-2', '/show', { url: `${base}/dashboard.html?side=curber&tv=2` });
 }
 
 const [action = 'status', what = ''] = process.argv.slice(2);
@@ -156,11 +153,8 @@ if (action === 'boot') {
     await call('projector', '/show', { url: `${base}/draw.html?nohud` });
     for (const tv of ['tv-1', 'tv-2']) await call(tv, '/show', { url: `${base}/draw.html?view=screen&nohud` });
   } else {
-    const page = base + '/';
-    const query = what ? [what] : []; // for example map=west
-    // The traffic view on the table is streamed from this laptop too; the TVs load their own 3D view.
+    // The traffic view, table and TVs, is streamed from this laptop too.
     openStream(port, `traffic${what.startsWith('map=') ? `&${what}` : ''}`);
-    for (const tv of ['tv-1', 'tv-2']) await call(tv, '/show', { url: `${page}?${['view=screen', 'nohud', ...query].join('&')}` });
   }
 } else if (action === 'idle' || action === 'blank') {
   for (const name of Object.keys(DISPLAYS)) await call(name, '/show', { [action]: true });

@@ -63,8 +63,9 @@ Run everything from the live folder, `.claude/worktrees/game-room-api`.
 
 ## A slot that shows the game
 
-The game runs on the laptop only. The projector's own computer (a Raspberry Pi) never runs it: the
-laptop streams the finished picture to it. Start the server (`npm run live`, or `npm run live:record`), then:
+Everything runs on the laptop only. None of the displays' own computers (Raspberry Pis) runs a
+page: the laptop streams the finished pictures to the projector and both TVs. Start the server
+(`npm run live`, or `npm run live:record`), then:
 
 1. **Take the room for the game.**
 
@@ -72,10 +73,11 @@ laptop streams the finished picture to it. Start the server (`npm run live`, or 
    npm run room boot
    ```
 
-   It checks the wifi, the server and the lidar, puts the dashboards on the TVs and opens the
-   stream page in Brave. Nothing is on the projector yet: press **Start streaming** on that page
-   and allow it to share the tab. Keep that window visible. The status line says how many frames
-   a second the projector is getting (at most 30).
+   It checks the wifi, the server and the lidar and opens the stream page in Brave: one window
+   with the table and the two TV dashboards in it. Nothing is on any display yet: press **Start
+   streaming** on that page and allow it to share the tab. Keep that window visible and as large
+   as the screen allows (the pictures are cut out of it). The status line says how many frames a
+   second each display is getting: at most 30 for the table, 12 for each TV.
 
 2. **No calibration for the game.** Its touch is the virus-game branch's: the table is a fixed box
    in front of the lidar. If taps land off, `[` and `]` nudge them 10 mm down and up, `{` and `}`
@@ -88,6 +90,20 @@ laptop streams the finished picture to it. Start the server (`npm run live`, or 
    The left TV turns to the 3D city in a solo round and the right one follows the role.
 
 4. **Hand the room back** with `npm run room idle`, then stop the server.
+
+## Rehearsing in the virtual room
+
+The organisers' virtual room (Docker) answers like the real one and shows it in 3D.
+
+```bash
+cd ~/aid-hackathon-room/sim
+docker compose -f compose.yaml -f compose.local.yml up -d
+```
+
+`compose.local.yml` moves the virtual projector to port 8031, because 8021 is taken on this laptop.
+The 3D view is http://localhost:8000. A dev server pointed at the virtual room is the launch entry
+`game-sim` (port 5253); its stream page is http://localhost:5253/stream.html?mode=game. Lights and
+lidar go to the virtual ones too. `docker compose down` stops it.
 
 ## Afterwards
 
