@@ -1,13 +1,20 @@
 // Works out where the projected image sits in the depth camera's picture.
 //
-// The table shows a glowing circle at four known places in turn. Someone puts an object on each
-// circle; the camera sees where that object is in its own picture. Four such pairs are enough to
-// convert any camera position into a position on the projected image.
+// The table shows a glowing circle at nine known places in turn, three rows of three. Someone puts
+// an object on each circle; the sensor sees where that object is in its own picture. Four such pairs
+// would be enough to convert any sensor position into a position on the projected image; nine even
+// out a fingertip put down a little off the mark, and how well they agree says how good the result is.
 
 import { solveHomography, applyHomography, isConvexQuad } from './homography.js';
 
 // Where the circles appear, as fractions of the projected image (x across, y down).
-export const MARKERS = [[0.15, 0.15], [0.85, 0.15], [0.85, 0.85], [0.15, 0.85]];
+// They go back and forth across the picture, so the hand never has far to move to the next one.
+export const MARKERS = [
+  [0.15, 0.15], [0.5, 0.15], [0.85, 0.15],
+  [0.85, 0.5], [0.5, 0.5], [0.15, 0.5],
+  [0.15, 0.85], [0.5, 0.85], [0.85, 0.85],
+];
+const CORNERS = [0, 2, 8, 6]; // of those, the four corners, going round
 
 export class Calibrator {
   // `apart` and `steady` are in the sensor's own units: pixels for the depth camera, millimetres for
@@ -21,7 +28,7 @@ export class Calibrator {
     this.candidates = 0; // how many objects it could see last frame, apart from those already captured
   }
 
-  // Which marker should be showing: 0 to 3, or 4 when all are captured.
+  // Which marker should be showing: 0 to 8, or 9 when all are captured.
   get step() {
     return this.points.length;
   }
@@ -62,12 +69,20 @@ export class Calibrator {
     this.last = null;
   }
 
-  // The finished calibration, or null if the four points cannot be right (crossed over or in a line).
-  result() {
-    if (this.points.length < MARKERS.length || !isConvexQuad(this.points)) return null;
+  // The finished calibration, or null if the points cannot be right (crossed over or in a line).
+  // `fit` says how well the nine agree with it: how far each lands from its own circle, as a share
+  // of the picture's width (`aspect` is the picture's width divided by its height).
+  result(aspect = 1.6) {
+    if (this.points.length < MARKERS.length || !isConvexQuad(CORNERS.map((k) => this.points[k]))) return null;
     const toTable = solveHomography(this.points, MARKERS);
     const toCamera = solveHomography(MARKERS, this.points);
-    return toTable && toCamera ? { toTable, toCamera } : null;
+    if (!toTable || !toCamera) return null;
+    const off = this.points.map(([x, y], k) => {
+      const [u, v] = applyHomography(toTable, x, y);
+      return Math.hypot(u - MARKERS[k][0], (v - MARKERS[k][1]) / aspect);
+    });
+    const fit = { off, worst: Math.max(...off), typical: Math.sqrt(off.reduce((sum, e) => sum + e * e, 0) / off.length) };
+    return { toTable, toCamera, fit };
   }
 }
 

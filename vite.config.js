@@ -1,9 +1,10 @@
 import { defineConfig, loadEnv } from 'vite';
 import { live } from './scripts/live.mjs';
+import { recorder } from './scripts/recorder.mjs';
 
 // Passes messages between every window that has the app open (see src/room/relay.js), so the camera
 // page on the laptop can tell the table and the screens what is on the table.
-const MESSAGES = ['blobs', 'world', 'state', 'calibrate', 'hello', 'who', 'gesture', 'edits', 'ink', 'virus', 'game_sync', 'action', 'lights', 'lidar-map'];
+const MESSAGES = ['blobs', 'world', 'state', 'calibrate', 'hello', 'who', 'gesture', 'edits', 'ink', 'virus', 'game_sync', 'action', 'lights', 'lidar-map', 'touches'];
 const relay = () => ({
   name: 'room-relay',
   configureServer(server) {
@@ -27,7 +28,9 @@ const clientLog = () => ({
       let body = '';
       req.on('data', (chunk) => (body += chunk));
       req.on('end', () => {
-        pageLog.push(`${new Date().toLocaleTimeString('sv-SE')} ${req.socket.remoteAddress?.replace('::ffff:', '')} ${body.slice(0, 600)}`);
+        const from = req.socket.remoteAddress?.replace('::ffff:', '');
+        pageLog.push(`${new Date().toLocaleTimeString('sv-SE')} ${from} ${body.slice(0, 600)}`);
+        recording.api.write('page', { from, d: body.slice(0, 600) });
         if (pageLog.length > 100) pageLog.shift();
         res.end('ok');
       });
@@ -48,6 +51,9 @@ const hueHost = process.env.HUE_IP || (process.env.ROOM_ENV === 'sim' ? 'localho
 const lidar = { target: process.env.ROOM_LIDAR ?? 'http://192.168.42.24', changeOrigin: true, ws: true, rewrite: (path) => path.replace(/^\/room-lidar/, '') };
 
 // The keys for live traffic are read from .env.local; see .env.example and scripts/live.mjs.
+// RECORD=1 writes everything that happens to recordings/ (see scripts/recorder.mjs).
+const recording = recorder({ on: Boolean(process.env.RECORD), types: MESSAGES, lidar: lidar.target });
+
 // PROJECTOR, TV1 and TV2 point somewhere else, as for scripts/room.mjs.
 const displays = {
   projector: process.env.PROJECTOR ?? 'http://192.168.42.21',
@@ -56,7 +62,7 @@ const displays = {
 };
 
 export default defineConfig(({ mode }) => ({
-  plugins: [relay(), clientLog(), live({ ...loadEnv(mode, process.cwd(), ''), ...process.env })],
+  plugins: [relay(), clientLog(), recording, live({ ...loadEnv(mode, process.cwd(), ''), ...process.env })],
   server: {
     proxy: {
       '/room-lidar': lidar,

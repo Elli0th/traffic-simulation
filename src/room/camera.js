@@ -128,7 +128,7 @@ function nextMarker() {
   calibrator = null;
   showMarker();
   if (!result) {
-    problem = 'Those four positions cannot be right (they cross over or line up). Calibrate again.';
+    problem = 'Those positions cannot be right (they cross over or line up). Calibrate again.';
     return;
   }
   config.calibrations[slot()] = result;
@@ -256,7 +256,7 @@ function describe() {
     hint = `I can see ${calibrator.candidates} things on the table. Leave only the one on the glowing circle (${calibrator.step + 1} of ${MARKERS.length}).`;
   } else if (calibrator) {
     hint = `Put an object on the glowing circle on the table (${calibrator.step + 1} of ${MARKERS.length}) and take your hand away. Or click where it is in the picture below.`;
-  } else if (!calibration()) hint = 'Press Calibrate. The table will show four circles, one at a time.';
+  } else if (!calibration()) hint = 'Press Calibrate. The table will show nine circles, one at a time.';
   else if (config.source === 'sim' && source?.objects?.length && !raw.length) {
     // Only the pretend camera can know this: the objects were there when the empty table was captured.
     hint = 'The objects on the pretend table were there when the table was captured as empty, so they count as part of it. Press Clear, capture the empty table again, then put objects back.';

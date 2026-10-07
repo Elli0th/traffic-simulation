@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite --host",
     "live": "vite --host --port 5203 --strictPort",
+    "live:record": "RECORD=1 vite --host --port 5203 --strictPort",
     "build": "vite build",
     "room": "node scripts/room.mjs",
     "test": "node scripts/test-depth.mjs && node scripts/test-lidar.mjs && node scripts/test-touch.mjs && node scripts/test-virus.mjs && node scripts/test-winner.mjs && node scripts/test-game-view.mjs && node scripts/test-game-runtime.mjs && node scripts/test-dashboards.mjs"

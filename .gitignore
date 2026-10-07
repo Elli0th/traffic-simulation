@@ -11,3 +11,6 @@ data/west/
 .env
 .env.*
 !.env.example
+
+# What a slot in the room recorded (scripts/recorder.mjs): large, and ours only.
+recordings/

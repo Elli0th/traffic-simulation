@@ -222,7 +222,11 @@ export class Gestures {
     const live = this.tracks.filter((t) => !t.missed && t.seen >= this.confirm);
     const objects = live.filter((t) => t.still).map((t) => ({ x: t.restX, y: t.restY }));
     const hands = live.filter((t) => !t.still && t.travel >= this.engage).sort((p, q) => p.id - q.id);
-    const out = { pan: [0, 0], zoom: 1, at: [0.5, 0.5], hands: hands.length, objects };
+    // Everything being followed and what it counts as, for the table to show (see touch-marks.js).
+    const marks = this.tracks
+      .filter((t) => !t.missed)
+      .map((t) => ({ x: t.x, y: t.y, kind: t.seen < this.confirm ? 'seen' : t.still ? 'object' : t.travel >= this.engage ? 'hand' : 'hover' }));
+    const out = { pan: [0, 0], zoom: 1, at: [0.5, 0.5], hands: hands.length, objects, points: marks };
     if (hands.length === 1) {
       const h = hands[0];
       out.pan = [h.x - h.px, h.y - h.py];

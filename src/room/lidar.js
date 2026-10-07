@@ -40,10 +40,11 @@ let latest = null; // newest sweep from a WebSocket
 let detector = new ScanDetector();
 let gestures = new Gestures();
 let calibrator = null;
+let checked = ''; // how well the nine points of the last calibration agreed, in words
 let collecting = null;
 let scan = null;
 let blips = [];
-let last = { hands: 0, objects: [], pan: [0, 0], zoom: 1 };
+let last = { hands: 0, objects: [], points: [], pan: [0, 0], zoom: 1 };
 let frames = 0;
 let fps = 0;
 let problem = '';
@@ -135,6 +136,7 @@ async function tick() {
 
   if (calibrator) {
     if (calibrator.observe(blips)) nextMarker();
+    else showMarker(); // the table shows how long the finger has been held, and if it sees too much
   } else if (calibration() && detector.ready) {
     const points = [];
     for (const b of blips) {
@@ -145,6 +147,7 @@ async function tick() {
     if (config.sending && (last.pan[0] || last.pan[1] || last.zoom !== 1)) {
       relay.send('gesture', { pan: last.pan, zoom: last.zoom, at: last.at });
     }
+    relay.send('touches', { from: 'lidar', list: last.points });
     if (config.objects) relay.send('blobs', { from: 'lidar', list: last.objects.map((o) => ({ x: o.x, y: o.y, r: 0.02 })) });
   }
 }
@@ -154,24 +157,38 @@ async function tick() {
 function startCalibration() {
   if (!detector.ready) return;
   calibrator = new Calibrator({ apart: 80, steady: 25 });
+  checked = '';
+  problem = '';
   showMarker();
 }
+// Tells the table which circle to show, how far the finger on it has got (0 to 1), and how many
+// things are in view (it must be one).
 function showMarker() {
   const k = calibrator ? calibrator.step : -1;
-  if (k >= 0 && k < MARKERS.length) relay.send('calibrate', { index: k, x: MARKERS[k][0], y: MARKERS[k][1] });
-  else relay.send('calibrate', { index: -1 });
+  if (k < 0 || k >= MARKERS.length) return relay.send('calibrate', { index: -1 });
+  relay.send('calibrate', { index: k, of: MARKERS.length, x: MARKERS[k][0], y: MARKERS[k][1], progress: calibrator.still / 10, seen: calibrator.candidates });
 }
 function nextMarker() {
   if (calibrator.step < MARKERS.length) return showMarker();
   const result = calibrator.result();
+  const points = calibrator.points;
   calibrator = null;
-  showMarker();
   if (!result) {
-    problem = 'Those four positions cannot be right (they cross over or line up). Calibrate again.';
+    showMarker();
+    problem = 'Those positions cannot be right (they cross over or line up). Calibrate again.';
     return;
   }
   config.calibrations[slot()] = result;
   save();
+  // How well the nine agree: a fingertip put down off the mark shows up here.
+  const typical = result.fit.typical * 100;
+  const worst = result.fit.worst * 100;
+  const good = typical < 1.5 && worst < 3;
+  checked = good
+    ? `The nine points agree to within ${worst.toFixed(1)}% of the picture. Good.`
+    : `The nine points disagree by up to ${worst.toFixed(1)}% of the picture (circle ${result.fit.off.indexOf(result.fit.worst) + 1} is the furthest out). Calibrate again, with the fingertip on the middle of each circle.`;
+  relay.send('record', { what: 'calibration', page: 'lidar', points, toTable: result.toTable, fit: result.fit });
+  relay.send('calibrate', { index: -1, verdict: { error: worst, good } });
   gestures = new Gestures();
 }
 
@@ -256,7 +273,7 @@ function describe() {
   else if (!detector.ready) hint = 'Clear the table, step back, then press “Capture the empty table”.';
   else if (calibrator && calibrator.candidates > 1) hint = `I can see ${calibrator.candidates} things. Only one finger on the table, on the glowing circle (${calibrator.step + 1} of ${MARKERS.length}).`;
   else if (calibrator) hint = `Hold a finger on the glowing circle on the table (${calibrator.step + 1} of ${MARKERS.length}) and keep it still for a second.`;
-  else if (!calibration()) hint = 'Press Calibrate. The table will show four circles, one at a time.';
+  else if (!calibration()) hint = 'Press Calibrate. The table will show nine circles, one at a time.';
   else {
     const what = last.hands === 0 ? 'No hands over the table.' : last.hands === 1 ? 'One hand: dragging the map.' : 'Two hands: zooming.';
     hint = `Live. ${what}${last.objects.length ? ` ${last.objects.length} still ${last.objects.length === 1 ? 'object' : 'objects'}.` : ''}`;
@@ -264,7 +281,7 @@ function describe() {
   $('hint').textContent = hint;
   $('status').textContent = scan ? `${scan.angles.length} readings a sweep · ${fps} sweeps a second` : '';
   $('status').className = problem ? 'bad' : '';
-  $('calibration').textContent = calibration() ? 'Calibrated. Calibrate again if the lidar or projector moves.' : 'Not calibrated yet.';
+  $('calibration').textContent = calibration() ? `Calibrated. ${checked || 'Calibrate again if the lidar or projector moves.'}` : 'Not calibrated yet.';
   $('out').textContent = `pan ${last.pan.map((v) => v.toFixed(3)).join(', ')}   zoom ${last.zoom.toFixed(3)}`;
 }
 
@@ -283,11 +300,12 @@ function drawPretend() {
   const W = pretend.width;
   const H = pretend.height;
   pctx.clearRect(0, 0, W, H);
-  if (calibrator && calibrator.step < MARKERS.length) {
+  const circle = calibrator && calibrator.step < MARKERS.length ? MARKERS[calibrator.step] : null;
+  if (circle) {
     pctx.strokeStyle = '#ffffff';
     pctx.lineWidth = 2;
     pctx.beginPath();
-    pctx.arc(MARKERS[calibrator.step][0] * W, MARKERS[calibrator.step][1] * H, 14, 0, Math.PI * 2);
+    pctx.arc(circle[0] * W, circle[1] * H, 14, 0, Math.PI * 2);
     pctx.stroke();
   }
   for (const [list, color, size] of [[cups, '#ff8a5e', 8], [hands, '#5ad1ff', 5]]) {
@@ -330,9 +348,10 @@ pretend.addEventListener('pointerup', (e) => {
   place();
 });
 $('onmarker').addEventListener('click', () => {
-  if (!calibrator || calibrator.step >= MARKERS.length) return;
+  const circle = calibrator && calibrator.step < MARKERS.length ? MARKERS[calibrator.step] : null;
+  if (!circle) return;
   cups = [];
-  hands = [{ x: MARKERS[calibrator.step][0], y: MARKERS[calibrator.step][1], r: 12 }];
+  hands = [{ x: circle[0], y: circle[1], r: 12 }];
   place();
 });
 $('clear').addEventListener('click', () => {
@@ -420,6 +439,6 @@ window.lidar = {
     return source;
   },
   get state() {
-    return { ready: detector.ready, calibrating: calibrator ? calibrator.step : -1, calibrated: Boolean(calibration()), blips, last, problem };
+    return { ready: detector.ready, checked, calibrating: calibrator ? calibrator.step : -1, calibrated: Boolean(calibration()), blips, last, problem };
   },
 };
