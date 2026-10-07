@@ -3,8 +3,8 @@
 // and maps touches to player actions (Left = Spreader, Right = Curber) with visual ripple feedback.
 //
 // This is the virus-game branch's engine: the table's place in front of the lidar is a fixed box, so
-// there is nothing to calibrate (the [ ] { } keys nudge it by 10 mm), and a tap is a touch that comes
-// and goes within three seconds.
+// there is nothing to calibrate (the [ ] { } keys nudge it by 10 mm), and a press counts as
+// soon as the finger is down.
 
 import { decodeScan } from './scan.js';
 
@@ -42,14 +42,13 @@ export class LidarTouchController {
     };
     this.clusterRadius = options.clusterRadius || 80.0; // mm
     this.minPoints = options.minPoints || 2;
-    // How long a touch may last and still be a tap (it was 1 second: a slow, deliberate press on the
-    // table was thrown away as too long), and how long it may go unseen before it is over. The lidar
-    // sweeps ten times a second, so 120 ms allows one missed sweep and the tap comes 0.2 s after the
-    // finger lifts (it was 0.3 s).
-    this.maxTap = options.maxTap || 3000; // ms
+    // A press counts as soon as the finger is down: when the lidar has seen it in two sweeps running
+    // (it sweeps ten times a second, so about 0.1 s after it lands). There is no waiting for the lift
+    // and no longest or shortest press. A touch is over once it has gone unseen for one sweep more
+    // than the next (120 ms).
     this.gap = options.gap || 120; // ms
-    // A press that two missed sweeps cut in two would be two taps: a second one this near the first,
-    // this soon after it, is the same press and is dropped.
+    // One press, one click: whatever stays on the table, or flickers in and out of the lidar's sight,
+    // has already clicked. It can click again once that spot has been empty for this long.
     this.sameTap = { mm: 80, ms: 600 };
     this.lastTaps = []; // { x, y, at }
     this.onTap = options.onTap || null; // (side, u, v, screenX, screenY) => void
@@ -239,6 +238,7 @@ export class LidarTouchController {
         touch.x = c.x;
         touch.y = c.y;
         touch.lastSeen = now;
+        touch.sightings++;
 
         // Horizontally inverted mapping for ceiling projector alignment:
         const normU = Math.max(0, Math.min(1, 1.0 - (c.x - minX) / (maxX - minX)));
@@ -248,15 +248,8 @@ export class LidarTouchController {
         touch.side = normU < 0.5 ? 'spreader' : 'curber';
         liveTouchIds.add(id);
       } else {
-        // Did not match. The lidar sweeps ten times a second and a fingertip can miss a sweep or two,
-        // so it is only gone after this.gap; then it was a tap if it lasted no longer than this.maxTap.
-        if (now - touch.lastSeen > this.gap) {
-          const duration = now - touch.startTime;
-          if (duration >= 80 && duration <= this.maxTap + this.gap) {
-            this.handleTap(touch);
-          }
-          this.activeTouches.delete(id);
-        }
+        // Did not match: over once it has gone unseen for longer than this.gap.
+        if (now - touch.lastSeen > this.gap) this.activeTouches.delete(id);
       }
     }
 
@@ -275,19 +268,35 @@ export class LidarTouchController {
           side: normU < 0.5 ? 'spreader' : 'curber',
           startTime: now,
           lastSeen: now,
+          sightings: 1,
+          pressed: false,
         };
         this.activeTouches.set(id, touch);
         // Add visual ripple
         this.addRipple(normU * window.innerWidth, normV * window.innerHeight, touch.side);
       }
     });
+
+    // Press: seen twice running, and not the same thing that has already clicked here.
+    this.lastTaps = this.lastTaps.filter((t) => now - t.at < this.sameTap.ms);
+    for (const touch of this.activeTouches.values()) {
+      if (touch.lastSeen !== now) continue;
+      const before = this.lastTaps.find((t) => Math.hypot(t.x - touch.x, t.y - touch.y) < this.sameTap.mm);
+      if (before) {
+        // Still there, or back after a flicker: keep its place taken.
+        before.at = now;
+        before.x = touch.x;
+        before.y = touch.y;
+        touch.pressed = true;
+      } else if (!touch.pressed && touch.sightings >= 2) {
+        touch.pressed = true;
+        this.lastTaps.push({ x: touch.x, y: touch.y, at: now });
+        this.handleTap(touch);
+      }
+    }
   }
 
   handleTap(touch) {
-    const now = performance.now();
-    this.lastTaps = this.lastTaps.filter((t) => now - t.at < this.sameTap.ms);
-    if (this.lastTaps.some((t) => Math.hypot(t.x - touch.x, t.y - touch.y) < this.sameTap.mm)) return;
-    this.lastTaps.push({ x: touch.x, y: touch.y, at: now });
     const screenX = touch.u * window.innerWidth;
     const screenY = touch.v * window.innerHeight;
 
