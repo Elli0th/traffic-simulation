@@ -347,6 +347,8 @@
       body.game #game { inset:0; width:auto; padding:0; border:0; background:none; backdrop-filter:none; pointer-events:none; z-index:10; }
       .shared-stats { position:absolute; inset:0 0 auto; height:112px; box-sizing:border-box; padding:12px 20px; background:#101720; pointer-events:auto; }
       .shared-stats h2 { display:flex; justify-content:space-between; }
+      .round-controls { display:flex; align-items:center; gap:16px; }
+      #game .round-controls button { padding:5px 10px; font-size:12px; letter-spacing:0; text-transform:none; }
       .totals { display:flex; gap:40px; font-size:16px; margin-bottom:6px; }
       .totals b { margin-left:10px; font-size:22px; font-variant-numeric:tabular-nums; }
       .totals span:first-child b { color:#ff4545; } .totals span:nth-child(2) b { color:#50dda5; }
@@ -474,7 +476,7 @@
       <div class="map-markers" data-map="spreader"><div class="target-preview" hidden><span></span></div><p id="g-feedback-spreader" class="map-feedback"></p></div>
       <div class="map-markers" data-map="curber"><div class="target-preview" hidden><span></span></div><p id="g-feedback-curber" class="map-feedback"></p></div>
       <header class="shared-stats">
-        <h2>Outbreak <span id="g-time"></span></h2>
+        <h2>Outbreak <span class="round-controls"><span id="g-time"></span><button data-home>End game / Reset</button></span></h2>
         <div class="totals"><span>Infected <b id="g-infected">0</b></span><span>Non-infected <b id="g-noninfected">0</b></span></div>
         <p id="g-status"></p>
         <div id="g-split"><i style="background:#50dda5"></i><i style="background:#ff4545"></i></div>
@@ -521,7 +523,7 @@
         </div>
       </div>
     </div>
-    <div id="g-over"><div><h1 id="g-win"></h1><p id="g-sum"></p><button onclick="location.reload()">Play again</button></div></div>
+    <div id="g-over"><div><h1 id="g-win"></h1><p id="g-sum"></p><button data-home>Back to home</button></div></div>
     <div id="plan">
       <h2>Plan a change</h2>
       <div class="tools">

@@ -1120,6 +1120,12 @@ function doAction(side, name, p) {
 }
 const GAME_KEYS = { q: 'party', w: 'antimask', e: 'antivaxx', r: 'sickwork', i: 'lockdown', o: 'vaccines', p: 'distancing', l: 'hospitals', k: 'newvaccine' };
 if (game) {
+  for (const button of document.querySelectorAll('[data-home]')) button.addEventListener('click', () => {
+    paused = true;
+    const home = new URL(location.href);
+    home.searchParams.delete('players');
+    location.assign(home.href);
+  });
   for (const panel of document.querySelectorAll('[data-player]')) {
     const side = panel.dataset.player;
     panel.addEventListener('pointerdown', () => { activeSide = side; });
@@ -1195,7 +1201,7 @@ if (game) {
       activeSide = side;
       // 1. Check if a game button was tapped
       const elAtPoint = document.elementFromPoint(screenX, screenY);
-      const actBtn = elAtPoint?.closest('#game button[data-act], #g-over button');
+      const actBtn = elAtPoint?.closest('#game button[data-act], [data-home], #g-menu [data-players]');
       if (actBtn && !actBtn.disabled) {
         if (actBtn.dataset.act) doAction(side, actBtn.dataset.act);
         else actBtn.click();
