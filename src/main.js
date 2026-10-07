@@ -5,6 +5,7 @@ import { People } from './people.js';
 import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
+import { Outbreak } from './virus.js';
 import * as relay from './room/relay.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
@@ -30,11 +31,16 @@ const people = new People(map.paths, sim, {
   cyclists: Math.round(map.paths.edges.length * 0.0105),
 });
 
+// ?game turns the table into a two-player outbreak: one player spreads a virus, the other curbs it.
+const game = params.has('game') && params.get('view') !== 'screen' ? new Outbreak(people) : null;
+if (game) document.body.classList.add('game');
+
 function stepAll(dt) {
   sim.step(dt);
   trams.step(dt);
   ferries.step(dt);
   people.step(dt);
+  game?.step(dt);
 }
 // Start with the city already busy rather than filling up from empty.
 for (let t = 0; t < 420; t += 0.15) stepAll(0.15);
@@ -150,6 +156,11 @@ const closedStrips = pool(
   new THREE.MeshBasicMaterial({ color: '#ff3b30', transparent: true, opacity: 0.6, depthTest: false }),
   MAX_STRIPS,
   2,
+);
+const heatCells = pool(
+  new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, depthTest: false }),
+  3000,
+  1,
 );
 const routeDots = pool(new THREE.MeshBasicMaterial({ color: '#5ad1ff', depthTest: false }), MAX_DOTS, 3);
 
@@ -311,7 +322,7 @@ const fromTable = (b) => ({
   r: (b.r ?? 0.02) * zoom,
 });
 
-let speed = 1; // index into SPEEDS
+let speed = game ? 3 : 1; // index into SPEEDS
 let paused = false;
 
 // ---------- the room: depth camera, calibration, other windows ----------
@@ -840,6 +851,12 @@ function drawVehicles(dt, time) {
   lamps.instanceColor.needsUpdate = true;
 }
 
+const STATE_COLOUR = [null, color('#ffb020'), color('#ff2d2d'), color('#39e6b0')];
+function infectionColour(p) {
+  if (p.iso) return paint('#ffffff');
+  return STATE_COLOUR[p.inf] || paint('#6f7a89');
+}
+
 function drawPeople() {
   const mpp = metresPerPixel();
   let n = 0;
@@ -851,7 +868,7 @@ function drawPeople() {
       const side = p.bike ? 0.6 : 0.9; // keep to the right
       const x = p.x - p.dz * side;
       const z = p.z + p.dx * side;
-      const c = paint(CLOTHES[p.shade]);
+      const c = game ? infectionColour(p) : paint(CLOTHES[p.shade]);
       if (mpp < 0.12) {
         // Close up: legs, a coat and a head; cyclists get a bicycle under them.
         const lift = p.bike ? 0.35 : 0;
@@ -956,13 +973,169 @@ function drawSky() {
   sun.intensity = 0.1 + 1.4 * day;
 }
 
+// ---------- the outbreak game ----------
+
+let armed = null; // 'seed' | 'lockdown' | 'vaccinate': the next click on the map
+let toastUntil = 0;
+const actions = {
+  seed: (p) => game.seed(p.x, p.z),
+  lockdown: (p) => game.lockdown(p.x, p.z),
+  vaccinate: (p) => game.vaccinate(p.x, p.z),
+  spread: () => game.upgrade('spread'),
+  reach: () => game.upgrade('reach'),
+  stealth: () => game.upgrade('stealth'),
+  masks: () => game.masks(),
+  test: () => game.test(),
+};
+const NEED_CLICK = new Set(['seed', 'lockdown', 'vaccinate']);
+const GAME_KEYS = { q: 'seed', w: 'spread', e: 'reach', r: 'stealth', i: 'lockdown', o: 'vaccinate', p: 'masks', l: 'test' };
+
+function toast(text) {
+  el('g-toast').textContent = text;
+  toastUntil = performance.now() + 3000;
+}
+
+function doAction(name, p) {
+  if (!game || game.phase === 'over') return;
+  if (NEED_CLICK.has(name) && !p) {
+    armed = armed === name ? null : name;
+    toast(armed ? `Click the map to ${name === 'seed' ? 'seed the virus' : name === 'lockdown' ? 'lock down' : 'vaccinate'}.` : '');
+    return;
+  }
+  const ok = actions[name](p);
+  if (!ok) toast(game.phase === 'setup' ? 'Spreader: click a busy street to place patient zero.' : 'Not enough points, or nobody there.');
+  else armed = null;
+}
+
+if (game) {
+  for (const b of document.querySelectorAll('#game [data-act]')) b.addEventListener('click', () => doAction(b.dataset.act));
+  renderer.domElement.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.button !== 0 || e.shiftKey || (!armed && game.phase !== 'setup')) return;
+      e.stopImmediatePropagation();
+      const p = pick(e);
+      if (!p) return;
+      if (game.phase === 'setup') doAction('seed', p);
+      else {
+        const name = armed;
+        armed = null;
+        doAction(name, p);
+      }
+    },
+    { capture: true },
+  );
+  addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLInputElement) return;
+    if (GAME_KEYS[e.key]) doAction(GAME_KEYS[e.key]);
+    if (e.key === 'Escape') armed = null;
+  });
+  // The first seed is free; until it is placed, the city just runs.
+}
+
+const pct = (x) => `${Math.round(x * 1000) / 10}%`;
+const ROUND = 180; // real seconds a round runs once the virus is seeded
+let roundTime = 0;
+function updateGame() {
+  const c = game.counts();
+  const total = game.total;
+  const bars = el('g-split').children;
+  [c.s, c.e, c.i, c.r].forEach((n, k) => (bars[k].style.width = `${(n / total) * 100}%`));
+  const left = Math.max(0, ROUND - roundTime);
+  el('g-time').textContent = game.phase === 'setup' ? '3:00' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+  if (game.phase === 'running' && left <= 0) game.phase = 'over';
+  const R_ = game.history.length > 3 ? growth() : null;
+  el('g-status').textContent =
+    game.phase === 'setup'
+      ? 'Spreader: click a busy street to place patient zero. Curber: get ready.'
+      : `${pct(c.share)} of the city has caught it. ${c.active} active${c.iso ? `, ${c.iso} isolating` : ''}.${R_ ? ` ${R_}` : ''}`;
+  el('g-sp').textContent = Math.floor(game.points.spreader);
+  el('g-cp').textContent = Math.floor(game.points.curber);
+  for (const b of document.querySelectorAll('#game [data-act]')) {
+    const a = b.dataset.act;
+    const side = ['seed', 'spread', 'reach', 'stealth'].includes(a) ? 'spreader' : 'curber';
+    const cost = a === 'seed' ? 8 : a === 'lockdown' ? 12 : a === 'vaccinate' ? 15 : a === 'masks' ? 18 : a === 'test' ? 14 + 6 * game.testing : 12 + 6 * game.level[a];
+    const maxed = (a === 'test' && game.testing >= 3) || (game.level[a] >= 4);
+    const cs = b.querySelector('[data-cost]');
+    if (cs) cs.textContent = maxed ? 'max' : cost;
+    b.disabled = game.phase !== 'running' || maxed || game.points[side] < cost;
+    b.classList.toggle('on', armed === a);
+  }
+  if (performance.now() > toastUntil) el('g-toast').textContent = '';
+  drawChart();
+  drawHeat();
+  if (game.phase === 'over' && !el('g-over').classList.contains('show')) {
+    el('g-win').textContent = "Time's up";
+    const peak = game.history.reduce((a, h) => (h[1] > a[1] ? h : a), [0, 0]);
+    el('g-sum').textContent = `In ${Math.round(game.time / 60)} simulated minutes ${pct(c.share)} of the city caught it. Cases peaked at ${peak[1]} after ${Math.round(peak[0] / 60)} minutes. Vaccinated or recovered: ${c.r}.`;
+    el('g-over').classList.add('show');
+    paused = true;
+  }
+}
+
+// Plain-words reading of how fast it is growing, from the last ten simulated minutes.
+function growth() {
+  const h = game.history;
+  const a = h[h.length - 1][1];
+  const b = h[Math.max(0, h.length - 11)][1];
+  if (a === 0) return 'Contained.';
+  if (b === 0) return '';
+  const ratio = a / b;
+  if (ratio > 1.15) return `Growing fast: cases up ${Math.round((ratio - 1) * 100)}% in 10 min.`;
+  if (ratio > 1.02) return 'Still growing.';
+  if (ratio > 0.9) return 'Levelling off.';
+  return 'Shrinking.';
+}
+
+function drawChart() {
+  const cv = el('g-chart');
+  const g = cv.getContext('2d');
+  const w = cv.width;
+  const h = cv.height;
+  g.clearRect(0, 0, w, h);
+  const hist = game.history;
+  if (hist.length < 2) return;
+  const tMax = hist[hist.length - 1][0];
+  const top = Math.max(game.total * 0.1, ...hist.map((x) => x[2]));
+  const line = (idx, colour) => {
+    g.beginPath();
+    hist.forEach((row, k) => {
+      const x = (row[0] / tMax) * (w - 4) + 2;
+      const y = h - 4 - (row[idx] / top) * (h - 8);
+      if (k) g.lineTo(x, y);
+      else g.moveTo(x, y);
+    });
+    g.strokeStyle = colour;
+    g.lineWidth = 3;
+    g.stroke();
+  };
+  line(2, '#ffb020');
+  line(1, '#ff3b30');
+}
+
+// Where the virus is, as glowing squares: readable even when people are too small to see.
+function drawHeat() {
+  const cells = game.heat(100);
+  let n = 0;
+  for (const c of cells) {
+    if (n >= 3000) break;
+    const k = Math.min(1, c.n / 5);
+    tmpColor.setRGB(1, 0.65 * (1 - k), 0.1 * (1 - k));
+    putBox(heatCells, n++, c.x, 0.9, c.z, 1, 0, 96, 0.4, 96, tmpColor);
+  }
+  heatCells.count = n;
+  heatCells.instanceMatrix.needsUpdate = true;
+  if (heatCells.instanceColor) heatCells.instanceColor.needsUpdate = true;
+}
+
 // ---------- frame loop ----------
 
 function advance(simSeconds) {
   // With a planning tool chosen, objects from the camera apply the tool instead of closing streets.
   const planning = tool !== 'object' && tool !== 'road' && !follower;
   if (planning) objectsUseTool(external);
-  const blobs = mouse.blobs.concat(follower ? remote : planning ? [] : external.map(fromTable));
+  const zones = game ? game.lockdowns : [];
+  const blobs = mouse.blobs.concat(zones, follower ? remote : planning ? [] : external.map(fromTable));
   sim.setBlobs(blobs);
   const n = Math.ceil(simSeconds / MAX_STEP);
   for (let k = 0; k < n; k++) stepAll(simSeconds / n);
@@ -975,6 +1148,7 @@ function draw(dt, blobs) {
     metricsTimer = 0.25;
     updateMetrics();
     drawJams();
+    if (game) updateGame();
   }
   drawSky();
   drawVehicles(dt, sim.time);
@@ -994,6 +1168,7 @@ function frame(now) {
     orbit += dt * 0.04;
     updateCameras();
   }
+  if (game?.phase === 'running' && !paused) roundTime += dt;
   const blobs = advance(paused ? 0 : dt * SPEEDS[speed]);
   draw(dt, blobs);
   tellScreens(blobs, now);
@@ -1004,6 +1179,7 @@ el('loading').remove();
 requestAnimationFrame(frame);
 
 window.table = {
+  game,
   setBlobs(list) {
     external = list;
   },

@@ -28,6 +28,20 @@ map. The first version, a small invented grid city, is still at `/grid.html`.
 | `+` `-` | More or less traffic |
 | `H` `C` `F` | Hide the panel, clear all objects, fullscreen |
 
+## Outbreak game (two players)
+
+Open http://localhost:5173/?game for a Plague Inc-style game on the same map. The Spreader seeds a
+virus and upgrades it; the Curber locks down zones, vaccinates, masks up and tests. People catch it
+from infectious people near them while they are outdoors. Red is infectious, amber exposed, teal
+recovered or vaccinated, white isolating. Glowing squares show where it is when people are too small
+to see. There is no winner: a round runs 3 minutes (30× speed) and ends with a summary of how far it spread.
+
+| Key | Spreader | Key | Curber |
+| --- | --- | --- | --- |
+| `Q` then click | Seed the virus (first one is free) | `I` then click | Lockdown zone (also closes streets) |
+| `W` `E` `R` | Spreads faster, airborne reach, evades tests | `O` then click | Vaccinate zone |
+| | | `P` `L` | Mask mandate, test and trace |
+
 ## Planning a change
 
 The panel at the top right of the table window turns the map into a what-if tool. Choose a tool, then

@@ -84,6 +84,129 @@
       body.nohud #plan {
         display: none;
       }
+      #game {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        width: 330px;
+        padding: 14px 16px;
+        background: rgba(8, 10, 14, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        backdrop-filter: blur(6px);
+        font-size: 13px;
+        display: none;
+      }
+      body.game #game {
+        display: block;
+      }
+      body.game #plan {
+        display: none;
+      }
+      body.nohud #game {
+        display: none;
+      }
+      #game h2 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #9aa4b2;
+      }
+      #game h3 {
+        margin: 12px 0 6px;
+        font-size: 12px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      #game h3 b {
+        float: right;
+        font-weight: 600;
+      }
+      #g-spread { color: #ff6b6b; }
+      #g-curb { color: #5ee6a8; }
+      #g-status {
+        margin: 0 0 8px;
+        color: #cfd6e0;
+        line-height: 1.4;
+      }
+      #g-split {
+        display: flex;
+        height: 10px;
+        border-radius: 5px;
+        overflow: hidden;
+        background: #1c222b;
+      }
+      #g-split i { display: block; height: 100%; }
+      #g-chart {
+        width: 100%;
+        height: 60px;
+        margin-top: 8px;
+        background: #11151b;
+        border-radius: 6px;
+      }
+      #game .tools {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+      #game button {
+        padding: 7px 8px;
+        color: inherit;
+        background: #1c222b;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 6px;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      #game button small {
+        display: block;
+        color: #7c8696;
+      }
+      #game button.on {
+        color: #06222e;
+        background: #5ad1ff;
+        border-color: #5ad1ff;
+      }
+      #game button.on small { color: #06222e; }
+      #game button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #g-toast {
+        min-height: 16px;
+        margin: 10px 0 0;
+        color: #ffc233;
+      }
+      #g-over {
+        position: fixed;
+        inset: 0;
+        display: none;
+        place-items: center;
+        background: rgba(0, 0, 0, 0.6);
+        text-align: center;
+      }
+      #g-over.show { display: grid; }
+      #g-over div {
+        max-width: 460px;
+        padding: 28px 34px;
+        background: #0c0f14;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 14px;
+      }
+      #g-over h1 { margin: 0 0 8px; font-size: 28px; }
+      #g-over p { color: #b6bfcc; line-height: 1.5; }
+      #g-over button {
+        padding: 9px 18px;
+        font: inherit;
+        color: #06222e;
+        background: #5ad1ff;
+        border: 0;
+        border-radius: 6px;
+        cursor: pointer;
+      }
       #plan {
         position: fixed;
         top: 16px;
@@ -212,6 +335,28 @@
         Map data © OpenStreetMap contributors
       </p>
     </div>
+    <div id="game">
+      <h2>Outbreak <span id="g-time" style="float:right"></span></h2>
+      <p id="g-status"></p>
+      <div id="g-split"><i style="background:#3b8cff"></i><i style="background:#ffb020"></i><i style="background:#ff3b30"></i><i style="background:#39e6b0"></i></div>
+      <canvas id="g-chart" width="600" height="120"></canvas>
+      <h3 id="g-spread">Spreader <b id="g-sp">0</b></h3>
+      <div class="tools">
+        <button data-act="seed">Seed here<small>Q · click map · 8</small></button>
+        <button data-act="spread">Spreads faster<small>W · <span data-cost="spread"></span></small></button>
+        <button data-act="reach">Airborne reach<small>E · <span data-cost="reach"></span></small></button>
+        <button data-act="stealth">Evades tests<small>R · <span data-cost="stealth"></span></small></button>
+      </div>
+      <h3 id="g-curb">Curber <b id="g-cp">0</b></h3>
+      <div class="tools">
+        <button data-act="lockdown">Lockdown zone<small>I · click map · 12</small></button>
+        <button data-act="vaccinate">Vaccinate zone<small>O · click map · 15</small></button>
+        <button data-act="masks">Mask mandate<small>P · 18</small></button>
+        <button data-act="test">Test and trace<small>L · <span data-cost="test"></span></small></button>
+      </div>
+      <p id="g-toast"></p>
+    </div>
+    <div id="g-over"><div><h1 id="g-win"></h1><p id="g-sum"></p><button onclick="location.reload()">Play again</button></div></div>
     <div id="plan">
       <h2>Plan a change</h2>
       <div class="tools">
