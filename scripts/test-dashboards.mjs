@@ -141,11 +141,11 @@ check('dashboard computes high-value targets for Spreader and hospital load for 
   // Spreader intel
   assert.ok(payload.spreaderData.targets.length > 0, 'has vulnerable targets');
   assert.ok(payload.spreaderData.targets[0].susceptible > 0);
-  assert.ok(payload.spreaderData.deck.length === 4, 'spreader has 4 actions in deck');
+  assert.ok(payload.spreaderData.deck.length === 5, 'spreader has 5 actions in deck');
   assert.ok(payload.spreaderData.recommended.length > 5);
 
   // Curber intel
-  assert.ok(payload.curberData.deck.length === 5, 'curber has 5 actions in deck');
+  assert.ok(payload.curberData.deck.length === 6, 'curber has 6 actions in deck');
   assert.ok(payload.curberData.hospitalStress >= 0);
   assert.ok(payload.curberData.recommended.length > 5);
 });

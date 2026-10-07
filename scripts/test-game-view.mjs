@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
-import { gameRect, sideAt, ownsAction, privateOverlays, publicCounts, actionState, nearestPlace, ownedEvents } from '../src/game-view.js';
+import { gameRect, sideAt, ownsAction, privateOverlays, publicCounts, actionState, nearestPlace, ownedEvents, controlWidth } from '../src/game-view.js';
 import { ACTIONS } from '../src/virus.js';
 for (const width of [800, 801, 1920]) {
   const a = gameRect('spreader', width, 900), b = gameRect('curber', width, 900);
-  assert.equal(a.width + b.width, width);
+  assert.equal(a.width + b.width + 2 * controlWidth(width), width);
   assert.equal(a.x + a.width, b.x);
   assert.equal(a.height, b.height);
-  assert.equal(sideAt(a.width - 1, 200, width, 900), 'spreader');
-  assert.equal(sideAt(a.width, 200, width, 900), 'curber');
+  assert.equal(sideAt(a.x + a.width - 1, 200, width, 900), 'spreader');
+  assert.equal(sideAt(b.x, 200, width, 900), 'curber');
   assert.equal(sideAt(100, 40, width, 900), null);
   assert.equal(sideAt(100, 899, width, 900), null);
+  assert.equal(a.height, 900 - a.y);
 }
 for (const [kind, action] of Object.entries(ACTIONS)) {
   assert.ok(ownsAction(action.side, kind, ACTIONS));

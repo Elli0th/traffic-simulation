@@ -16,6 +16,7 @@ import { VirusLighting } from './room/hue-lights.js';
 import { buildDashboardPayload } from './room/dashboard-data.js';
 import { LidarTouchController } from './room/lidar-touch.js';
 import { TouchMarks } from './room/touch-marks.js';
+import { FrameStreamer } from './room/frame-streamer.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
 const MAX_STEP = 0.12; // longest simulation step, in seconds, that keeps the driving model stable
@@ -66,9 +67,22 @@ const lighting = gameMode ? new VirusLighting() : null;
 const actionHistory = [];
 let touchCtx = null;
 let lidarTouch = null;
+let streamer = null;
+const streaming = gameMode && params.has('stream') && params.get('stream') !== 'false';
 if (game) {
   document.body.classList.add('game');
-  window.addEventListener('beforeunload', () => lighting?.restoreNeutral());
+  window.addEventListener('beforeunload', () => {
+    lighting?.restoreNeutral();
+    streamer?.stop();
+  });
+  // Only when the address asks for it (?stream): a page that streamed whenever it was opened would
+  // take the projector from whoever has it, and on the projector's own browser it would replace
+  // itself with its own stream. It sends the map and the touch marks, not the panels; for the whole
+  // picture, panels included, use /stream.html. The default address goes through the dev server.
+  if (streaming) {
+    streamer = new FrameStreamer({ url: params.get('stream_url') || `ws://${location.host}/room-display/projector/frames` });
+    streamer.start();
+  }
 }
 
 function stepAll(dt) {
@@ -85,8 +99,8 @@ if (!boardOnly) for (let t = 0; t < (game ? 60 : 420); t += game ? GAME_STEP : 0
 
 // ---------- renderer, cameras, lights ----------
 
-const renderer = new THREE.WebGLRenderer({ antialias: !game, alpha: false, preserveDrawingBuffer: false });
-renderer.setPixelRatio(game ? 1 : Math.min(devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: !game, alpha: false, preserveDrawingBuffer: streaming });
+renderer.setPixelRatio(game ? 0.8 : Math.min(devicePixelRatio, 2));
 renderer.localClippingEnabled = true; // lets the ground be cut off at the edge of the map
 document.body.appendChild(renderer.domElement);
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1312,7 +1326,7 @@ function doAction(side, name, p) {
   }
   updateGame();
 }
-const GAME_KEYS = { q: 'party', w: 'antimask', e: 'antivaxx', r: 'sickwork', i: 'lockdown', o: 'vaccines', p: 'distancing', l: 'hospitals', k: 'newvaccine' };
+const GAME_KEYS = { q: 'party', w: 'antimask', e: 'antivaxx', r: 'sickwork', a: 'fakenews', i: 'lockdown', o: 'vaccines', p: 'distancing', l: 'hospitals', k: 'newvaccine', j: 'education' };
 if (game) {
   for (const button of document.querySelectorAll('[data-home]')) button.addEventListener('click', () => {
     paused = true;
@@ -1325,39 +1339,6 @@ if (game) {
     panel.addEventListener('pointerdown', () => { activeSide = side; });
     for (const b of panel.querySelectorAll('[data-act]')) b.addEventListener('click', () => doAction(side, b.dataset.act));
     for (const b of panel.querySelectorAll('[data-zoom]')) b.addEventListener('click', () => b.dataset.zoom === 'fit' ? updateGameCamera(side, true) : zoomGame(side, Number(b.dataset.zoom)));
-    const rallyButton = panel.querySelector('[data-rally]');
-    let rallyTimer = null;
-    function rallyTap() {
-      if (paused || !game.rally(side)) return;
-      rallyButton.querySelector('.tap-reward').textContent = '+0.3';
-      updateGame();
-    }
-    function stopRally() { clearInterval(rallyTimer); rallyTimer = null; rallyButton.querySelector('.tap-reward').textContent = ''; }
-    rallyButton.addEventListener('pointerdown', e => {
-      if (e.button !== 0 || rallyButton.disabled) return;
-      activeSide = side;
-      rallyButton.setPointerCapture(e.pointerId);
-      rallyTap();
-      rallyTimer = setInterval(rallyTap, 120);
-    });
-    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) rallyButton.addEventListener(type, stopRally);
-    addEventListener('blur', stopRally);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) stopRally(); });
-    rallyButton.addEventListener('click', e => { if (e.detail === 0) rallyTap(); });
-    panel.querySelector('[data-repeat]').addEventListener('click', () => {
-      const selected = gameViews[side].selected;
-      if (selected) doAction(side, selected.kind === 'seed' ? 'party' : selected.kind, selected);
-    });
-    const reveal = panel.querySelector('[data-reveal]');
-    reveal.addEventListener('click', () => {
-      const open = !panel.classList.contains('revealed');
-      for (const other of document.querySelectorAll('[data-player]')) {
-        other.classList.remove('revealed');
-        other.querySelector('[data-reveal]').setAttribute('aria-expanded', 'false');
-      }
-      panel.classList.toggle('revealed', open);
-      reveal.setAttribute('aria-expanded', String(open));
-    });
   }
   renderer.domElement.addEventListener('pointerdown', e => {
     if (e.button !== 0 || e.shiftKey) return;
@@ -1400,20 +1381,10 @@ if (game) {
       activeSide = side;
       // 1. Check if a game button was tapped
       const elAtPoint = document.elementFromPoint(screenX, screenY);
-      const actBtn = elAtPoint?.closest('#game button[data-act], [data-home], #g-over button, #g-menu [data-players]');
+      const actBtn = elAtPoint?.closest('#game button, [data-home], #g-over button, #g-menu [data-players]');
       if (actBtn && !actBtn.disabled) {
         if (actBtn.dataset.act) doAction(side, actBtn.dataset.act);
         else actBtn.click();
-        return;
-      }
-      const revealBtn = elAtPoint?.closest('#game [data-reveal]');
-      if (revealBtn) {
-        const panel = revealBtn.closest('[data-player]');
-        if (panel) {
-          const open = !panel.classList.contains('revealed');
-          panel.classList.toggle('revealed', open);
-          revealBtn.setAttribute('aria-expanded', String(open));
-        }
         return;
       }
       // 2. Map tap to map world coordinate
@@ -1475,6 +1446,8 @@ function updateActionList(side) {
     if (e.kind === 'hospitals' && state.label === 'Active') detail += ` | ${game.counts().iso} currently isolating`;
     if (e.kind === 'distancing') detail += ' | contact rate -45%';
     if (e.kind === 'antimask') detail += ' | contact rate +40%';
+    if (e.kind === 'fakenews') detail += ' | contact rate +20%; isolation detection halved; false cures give no protection';
+    if (e.kind === 'education') detail += ' | contact rate -20%; health monitoring increases isolation';
     row.children[2].textContent = detail;
   }
   const keep = new Set(events.map(e => String(e.id)));
@@ -1541,6 +1514,7 @@ const FEED = {
   vaccines: 'began a free vaccine rollout',
   hospitals: 'started building new hospitals, ready in about a week',
   newvaccine: 'began researching a stronger vaccine, ready in about two weeks',
+  education: 'launched health education: people monitor symptoms, seek care and isolate sooner',
 };
 const feed = [];
 function tell(time, text) {
@@ -1606,14 +1580,6 @@ function updateGame() {
   for (const side of SIDES) if (performance.now() > gameViews[side].toastUntil && !gameViews[side].armed) { el(`g-toast-${side}`).textContent = ''; el(`g-feedback-${side}`).textContent = ''; }
   for (const side of SIDES) {
     updateActionList(side);
-    const panel = document.querySelector(`[data-player="${side}"]`);
-    panel.querySelector('[data-rally]').disabled = game.phase !== 'running' || paused;
-    el(`g-effort-${side}`).style.width = `${(game.effort[side] % 20) * 5}%`;
-    const selected = gameViews[side].selected;
-    const kind = selected?.kind === 'seed' ? 'party' : selected?.kind;
-    const repeat = panel.querySelector('[data-repeat]');
-    repeat.disabled = !kind || !game.available(kind);
-    repeat.querySelector('small').textContent = selected ? `${SHORT_ACTION[kind] || kind} - ${nearestPlace(map.labels, selected.x, selected.z)}` : 'Choose a map location first';
   }
   // Update dynamic Hue lighting based on virus spread
   lighting?.update(game);
@@ -1828,7 +1794,11 @@ function draw(dt, blobs) {
 }
 
 let last = performance.now();
+const targetGap = game ? 1000 / 30 : 0; // 30 FPS cap during outbreak game mode to protect Raspberry Pi GPU
 function frame(now) {
+  requestAnimationFrame(frame);
+  // (A little short of the gap, or a display frame that comes a millisecond early costs a whole one.)
+  if (targetGap > 0 && now - last < targetGap - 3) return;
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (view === 'screen') {
@@ -1857,7 +1827,7 @@ function frame(now) {
   }
   tellScreens(blobs, now);
   pushFrame(now);
-  requestAnimationFrame(frame);
+  if (streamer) streamer.pushFrame(renderer.domElement, touchCtx?.canvas);
 }
 el('loading').remove();
 window.pageLog?.(`running${lidarTouch ? ', tap touch on' : ''}`);
