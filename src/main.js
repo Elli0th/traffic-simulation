@@ -74,7 +74,7 @@ if (!boardOnly) for (let t = 0; t < (game ? 60 : 420); t += game ? GAME_STEP : 0
 // ---------- renderer, cameras, lights ----------
 
 const renderer = new THREE.WebGLRenderer({ antialias: !game, alpha: false, preserveDrawingBuffer: false });
-renderer.setPixelRatio(game ? 1 : Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(game ? 0.8 : Math.min(devicePixelRatio, 2));
 renderer.localClippingEnabled = true; // lets the ground be cut off at the edge of the map
 document.body.appendChild(renderer.domElement);
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1624,7 +1624,10 @@ function draw(dt, blobs) {
 }
 
 let last = performance.now();
+const targetGap = game ? 1000 / 30 : 0; // 30 FPS cap during outbreak game mode to protect Raspberry Pi GPU
 function frame(now) {
+  requestAnimationFrame(frame);
+  if (targetGap > 0 && now - last < targetGap) return;
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (view === 'screen') {
@@ -1644,7 +1647,6 @@ function frame(now) {
   }
   tellScreens(blobs, now);
   pushFrame(now);
-  requestAnimationFrame(frame);
 }
 el('loading').remove();
 if (boardOnly) renderer.domElement.style.display = 'none';
