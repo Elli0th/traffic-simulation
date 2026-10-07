@@ -46,11 +46,18 @@ try {
     g.seed(p.x, p.z); g.points.spreader = 100; g.points.curber = 100;
     return {x:p.x,z:p.z};
   })()`);
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (await evaluate('!document.querySelector("[data-act=party]").disabled')) break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
   await evaluate('document.querySelector("[data-act=party]").click()');
   const leftRect = gameRect('spreader',1440,900);
   const pixels = { x:leftRect.x + leftRect.width / 2 + (target.x-after.spreader.x)*leftRect.width/after.spreader.zoom, y:leftRect.y+leftRect.height/2+(target.z-after.spreader.z)*leftRect.width/after.spreader.zoom };
   await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pixels.x, y: pixels.y });
-  await new Promise(resolve => setTimeout(resolve, 50));
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (await evaluate('!document.querySelector("[data-map=spreader] .target-preview").hidden')) break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
   assert.equal(await evaluate('document.querySelector("[data-map=spreader] .target-preview").hidden'), false);
   await command('Input.dispatchMouseEvent', { type: 'mousePressed', x: pixels.x, y: pixels.y, button: 'left', clickCount: 1 });
   await command('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pixels.x, y: pixels.y, button: 'left', clickCount: 1 });
