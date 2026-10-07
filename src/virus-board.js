@@ -172,7 +172,7 @@ export function startBoard(relay, size) {
     at('noninfected').textContent = num(s.noninfected);
     at('hospital').textContent = num(s.hospital);
     at('dead').textContent = num(s.dead);
-    at('share').textContent = `${Math.floor(s.share * 100)}%`;
+    at('share').textContent = `${s.share < 0.1 ? Math.floor(s.share * 1000) / 10 : Math.floor(s.share * 100)}%`;
     at('share-bar').style.width = `${Math.min(100, (s.share / s.goal) * 100)}%`;
     at('goal').textContent = `The Spreader wins at ${Math.round(s.goal * 100)}% of the city.`;
     at('approval').textContent = `${Math.ceil(s.approval)}%`;
