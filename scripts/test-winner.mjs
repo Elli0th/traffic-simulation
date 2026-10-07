@@ -1,10 +1,9 @@
-// Checks who wins a round of the outbreak game, the government's approval, and cars carrying the
-// virus, on a handful of made-up people rather than the whole city, so it runs in a moment.
+// Checks that a round has no winner and just runs to the end, and cars carrying the virus, on a handful of made-up people rather than the whole city, so it runs in a moment.
 //
 //   node scripts/test-winner.mjs
 
 import assert from 'node:assert/strict';
-import { Outbreak, TAKEOVER, DAY, S, I } from '../src/virus.js';
+import { Outbreak, DAY, S, I } from '../src/virus.js';
 import { boardState, DAYS } from '../src/virus-board.js';
 
 let passed = 0;
@@ -25,56 +24,34 @@ const run = (game, seconds) => {
   for (let t = 0; t < seconds && game.phase === 'running'; t++) game.step(1);
 };
 
-check('time running out with the virus held back is a win for the Curber', () => {
-  const { game } = crowd(400, 200); // too far apart to pass it on
-  game.seed(0, 0, 250);
-  run(game, 60);
+check('there is no winner: the round runs until time is up, whatever has happened', () => {
+  const { game } = crowd(40, 3); // shoulder to shoulder: the whole crowd catches it
+  game.seed(60, 0, 20);
+  run(game, 40 * DAY);
+  assert.ok(game.ever / game.total > 0.5, 'it spread well past a third of the city');
+  assert.equal(game.phase, 'running');
+  assert.equal(game.winner, undefined);
+  assert.equal(game.approval, undefined);
   game.finish();
-  assert.equal(game.winner, 'curber');
   assert.equal(game.phase, 'over');
 });
 
-check('stamping the outbreak out is a win for the Curber', () => {
-  const { game } = crowd(400, 200);
+check('stamping the outbreak out does not end the round either', () => {
+  const { game } = crowd(400, 200); // too far apart to pass it on
   game.seed(0, 0, 250);
   run(game, 20 * DAY);
-  assert.equal(game.winner, 'curber');
-  assert.match(game.reason, /stamped out/);
+  assert.equal(game.counts().active, 0);
+  assert.equal(game.phase, 'running');
 });
 
-check(`the Spreader wins the moment ${TAKEOVER * 100}% of the city has caught it`, () => {
-  const { game } = crowd(40, 3); // shoulder to shoulder
-  game.seed(60, 0, 20);
-  run(game, 30 * DAY);
-  assert.equal(game.winner, 'spreader');
-  assert.ok(game.ever / game.total >= TAKEOVER && game.ever / game.total < TAKEOVER + 0.1);
-});
-
-check('lockdowns and distancing cost approval; doing nothing costs none', () => {
+check('lockdowns and distancing cost nothing but the people they keep at home', () => {
   const { game } = crowd(400, 200);
   game.seed(0, 0, 250);
-  run(game, 5);
-  assert.equal(game.approval, 100);
   game.points.curber = 100;
   assert.ok(game.act('distancing'));
+  assert.ok(game.act('lockdown', 0, 0));
   run(game, 5 * DAY);
-  const afterDistancing = game.approval;
-  assert.ok(afterDistancing < 100 && afterDistancing > 90, `approval ${afterDistancing}`);
-});
-
-check('a government that locks down everywhere falls, and the Spreader wins', () => {
-  const { game, agents } = crowd(400, 200);
-  for (const p of agents) p.threshold = 0; // essential workers: the lockdowns do not send them home
-  game.seed(0, 0, 250);
-  game.base.infectious = 1e9; // keep the outbreak alive for as long as the test needs
-  for (let t = 0; t < 60 * DAY && game.phase === 'running'; t++) {
-    game.points.curber = 100;
-    game.act('lockdown', (t % 50) * 1000, 5000);
-    game.step(1);
-  }
-  assert.equal(game.winner, 'spreader');
-  assert.equal(game.approval, 0);
-  assert.match(game.reason, /confidence/);
+  assert.equal(game.phase, 'running');
 });
 
 check('a driver who has been among the infectious carries it to the end of the trip', () => {
@@ -109,7 +86,6 @@ check('the screens are told the round in real people, with the curve in days', (
   const s = boardState(game);
   assert.equal(s.infected + s.noninfected, game.population);
   assert.equal(s.day, 3);
-  assert.equal(s.goal, TAKEOVER);
   assert.ok(s.history.length > 1 && s.history.at(-1)[0] <= DAYS);
   assert.ok(s.history.every(([day, n]) => day >= 0 && Number.isInteger(n)));
 });

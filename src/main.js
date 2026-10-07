@@ -5,7 +5,7 @@ import { People } from './people.js';
 import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
-import { Outbreak, ACTIONS, TAKEOVER, DAY } from './virus.js';
+import { Outbreak, ACTIONS, DAY } from './virus.js';
 import { CurberAI } from './curber-ai.js';
 import { SIDES, gameRect, sideAt, ownsAction, privateOverlays, publicCounts, setSinglePlayer, activeSides } from './game-view.js';
 import { startTablePlay } from './virus-table.js';
@@ -1190,8 +1190,6 @@ function updateGame() {
   const shared = publicCounts(c);
   el('g-infected').textContent = num(Math.round(shared.infected * game.scale));
   el('g-noninfected').textContent = num(Math.round(shared.noninfected * game.scale));
-  el('g-caught').textContent = `${Math.floor(c.share * 100)}% of ${Math.round(TAKEOVER * 100)}%`;
-  el('g-approval').textContent = `${Math.ceil(game.approval)}%`;
   el('g-status').textContent =
     game.phase === 'setup'
       ? 'Spreader: click a busy street to place patient zero. Curber: get ready.'
@@ -1220,8 +1218,7 @@ function updateGame() {
   if (dashPayload) relay.send('game_sync', dashPayload);
 
   if (game.phase === 'over' && !el('g-over').classList.contains('show')) {
-    if (!game.winner) game.finish();
-    el('g-win').textContent = `${game.winner === 'spreader' ? 'The Spreader wins' : 'The Curber wins'}: ${game.reason}`;
+    el('g-win').textContent = "Time's up";
     const peak = game.history.reduce((a, h) => (h[1] > a[1] ? h : a), [0, 0]);
     el('g-sum').textContent = `In ${Math.round(game.time / DAY)} days ${num(c.people.ever)} of ${num(game.population)} people (${pct(c.share)}) caught the virus. Cases peaked at ${num(Math.round(peak[1] * game.scale))} on day ${Math.round(peak[0] / DAY)}. An estimated ${num(c.people.dead)} died, and ${num(c.people.immune)} are immune.`;
     el('g-over').classList.add('show');

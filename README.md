@@ -60,12 +60,10 @@ use simulated time. This is an accelerated fictional game model, not a predictio
 
 Scale and realism: a round stands for 60 days (30× speed). Each simulated person stands for about 290 of Göteborg's 600,000 people, and the virus follows the original COVID-19 strain: 3 days until infectious, 8 days infectious, R0 of about 2.5, 5% needing a hospital bed, 0.7% dying. Counts are shown in real people. People live around homes and workplaces, so dense districts are crowded and risk there is scaled by how built-up the area is. Trams and buses carry the virus: people waiting at a stop mix with the passengers, so an infectious rider takes it to the next stop (infected vehicles turn red).
 
-**Who wins.** The Spreader wins the moment 30% of the city has caught the virus, or the
-government's approval reaches zero. The Curber wins by holding out until the three minutes are up, or
-by stamping the outbreak out. Both numbers are in the top bar. Approval only goes down: each lockdown
-in force costs 1.1 points a game day and social distancing 0.9, so a 20-day lockdown costs 22 of the
-100. Cars carry the virus too: a driver who sets off from among infectious people may infect one or
-two where the trip ends (the car turns red), which is how it jumps across the city.
+**No winner.** A round is a plain three minutes (60 game days): it does not end early when the virus
+spreads far or dies out, and ends with a summary of how far it went. Cars carry the virus too: a driver
+who sets off from among infectious people may infect one or two where the trip ends (the car turns red),
+which is how it jumps across the city.
 
 | Player / key | Action | Delay | Effect / duration |
 | --- | --- | --- | --- |
