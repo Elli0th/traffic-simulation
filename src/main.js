@@ -1342,7 +1342,10 @@ if (game) {
     },
   });
   lidarTouch.start();
-  relay.on('lidar-map', (m) => lidarTouch.setCalibration(m?.toTable));
+  relay.on('lidar-map', (m) => {
+    lidarTouch.setCalibration(m?.toTable);
+    lidarTouch.setEmptyTable(m?.background, m?.margin);
+  });
 }
 
 const markerPoint = new THREE.Vector3();
@@ -1747,7 +1750,9 @@ function frame(now) {
     roundTime = Math.min(ROUND, roundTime + dt);
     if (roundTime === ROUND) { game.finish(); updateGame(); }
   }
-  tablePlay?.update(dt, external);
+  // Once the tap touch has the lidar page's calibration it does the clicking, held fingers and pieces
+  // included; the slower hold of virus-table.js would then press everything a second time.
+  tablePlay?.update(dt, lidarTouch?.calibrated && lidarTouch.dwell ? [] : external);
   live.step();
   const blobs = advance(paused ? 0 : dt * SPEEDS[speed]);
   draw(dt, blobs);

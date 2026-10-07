@@ -58,10 +58,11 @@ export class ScanDetector {
     this.recent = []; // the last few sweeps' things, to tell what stays from what flickers
   }
 
-  // The things that have been there for three sweeps running: a finger, not a flicker.
+  // The things that were also there in one of the two sweeps before: a finger, not a flicker. (Not
+  // both: a fingertip far from the lidar catches only a beam or two, and misses the odd sweep.)
   steady(blips) {
     const near = (list, b) => list.some((o) => Math.hypot(o.x - b.x, o.y - b.y) < 60);
-    const out = this.recent.length >= 2 ? blips.filter((b) => this.recent.every((list) => near(list, b))) : [];
+    const out = blips.filter((b) => this.recent.some((list) => near(list, b)));
     this.recent.push(blips);
     if (this.recent.length > 2) this.recent.shift();
     return out;

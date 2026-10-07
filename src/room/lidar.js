@@ -403,7 +403,10 @@ setInterval(() => {
   frames = 0;
   if (calibrator) showMarker();
   // The game's tap touch reads the lidar itself; it places its taps with this page's calibration.
-  if (config.source !== 'sim' && calibration() && !calibrator) relay.send('lidar-map', { toTable: calibration().toTable });
+  // It gets the empty table too, so that it leaves out the same dents and edges as this page does.
+  if (config.source !== 'sim' && calibration() && !calibrator && detector.ready) {
+    relay.send('lidar-map', { toTable: calibration().toTable, background: [...detector.background], margin: Number(config.margin) });
+  }
 }, 1000);
 
 // For tests and for poking at from the console.
