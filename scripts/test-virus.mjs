@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { Sim } from '../src/sim.js';
 import { People } from '../src/people.js';
 import { Trams } from '../src/transit.js';
+import { CurberAI } from '../src/curber-ai.js';
 import { Outbreak, S, I, R } from '../src/virus.js';
 
 const map = JSON.parse(readFileSync(new URL('../public/gbg.json', import.meta.url)));
@@ -107,6 +108,29 @@ check('a lockdown and vaccination slow it', () => {
   });
   console.log('   ', held.rows.join('  '));
   assert.ok(held.ever < free.ever, `${held.ever} vs ${free.ever}`);
+});
+
+check('the computer Curber is lenient, then acts, and slows but does not erase the outbreak', () => {
+  const w = world();
+  const c = crowd(w.people);
+  w.game.seed(c.x, c.z);
+  const ai = new CurberAI(w.game);
+  let noticed = null;
+  const rows = [];
+  for (let t = 0; t < 5400; t++) {
+    w.step(1);
+    ai.step();
+    if (noticed === null && ai.noticedAt !== null) noticed = ai.noticedAt;
+    if (t % 900 === 0) rows.push(`${Math.round(t / 90)}d ${Math.round(w.game.counts().share * 1000) / 10}%`);
+  }
+  const share = w.game.counts().share;
+  console.log('   ', rows.join('  '), '| moves:', ai.log.map(([t, k]) => `${Math.round(t / 90)}d ${k}`).join(', '));
+  assert.ok(noticed !== null, 'it noticed the outbreak');
+  assert.ok(ai.log.length > 0, 'it did something');
+  assert.ok(ai.log[0][0] >= noticed + 5 * 90, `first move came only ${(ai.log[0][0] - noticed) / 90} days after noticing`);
+  assert.ok(ai.log[0][0] >= 12 * 90, `first move on day ${ai.log[0][0] / 90}: no grace period`);
+  assert.ok(share > 0.02, `the Spreader got only ${share}`);
+  assert.ok(share < free.share, `${share} vs ${free.share}`);
 });
 
 function fixture(n = 20) {

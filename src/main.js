@@ -6,6 +6,7 @@ import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
 import { Outbreak, ACTIONS, DAY } from './virus.js';
+import { CurberAI } from './curber-ai.js';
 import { SIDES, gameRect, sideAt, ownsAction, privateOverlays, publicCounts } from './game-view.js';
 import * as relay from './room/relay.js';
 
@@ -41,6 +42,7 @@ if (params.has('game')) for (const p of people.agents) pointAt(people.edges[p.ed
 
 // ?game turns the table into a two-player outbreak: one player spreads a virus, the other curbs it.
 const game = gameMode ? new Outbreak(people, { sim, trams }) : null;
+let ai = null; // the computer's Curber, in the one-player game
 if (game) document.body.classList.add('game');
 
 function stepAll(dt) {
@@ -49,6 +51,7 @@ function stepAll(dt) {
   ferries.step(dt);
   people.step(dt);
   game?.step(dt);
+  ai?.step();
 }
 // Start with the city already busy rather than filling up from empty.
 for (let t = 0; t < 420; t += 0.15) stepAll(0.15);
@@ -1058,6 +1061,7 @@ function toast(side, text) {
 }
 function doAction(side, name, p) {
   if (!game || game.phase === 'over') return;
+  if (ai && side === 'curber') return; // the computer plays that side
   if (name === 'seed' ? side !== 'spreader' : !ownsAction(side, name, ACTIONS)) return;
   const v = gameViews[side];
   if (['seed', 'party', 'sickwork', 'lockdown'].includes(name) && !p) {
@@ -1103,6 +1107,31 @@ if (game) {
     if (GAME_KEYS[e.key]) doAction(activeSide, GAME_KEYS[e.key]);
     if (e.key === 'Escape') { gameViews[activeSide].armed = null; toast(activeSide, ''); }
   });
+}
+
+// ---------- start menu: one player against the computer, or two players ----------
+
+function startGame(players) {
+  if (players === 1) {
+    document.body.classList.add('one-player');
+    ai = new CurberAI(game, {
+      onAct: (kind, at, time) => {
+        const day = Math.min(60, Math.floor(time / DAY) + 1);
+        aiMoves.push(`Day ${day}: ${ACTIONS[kind].label}${at && at.x !== undefined ? ' (somewhere on the map)' : ''}`);
+        el('g-ai-log').innerHTML = aiMoves.slice(-4).join('<br />');
+      },
+    });
+  }
+  el('g-menu').classList.remove('show');
+}
+const aiMoves = [];
+if (game) {
+  const chosen = params.get('players');
+  if (chosen === '1' || chosen === '2') startGame(Number(chosen));
+  else {
+    el('g-menu').classList.add('show');
+    for (const b of document.querySelectorAll('#g-menu [data-players]')) b.addEventListener('click', () => startGame(Number(b.dataset.players)));
+  }
 }
 
 const num = (n) => n.toLocaleString('en-GB');

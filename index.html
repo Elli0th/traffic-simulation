@@ -339,6 +339,38 @@
       #game #g-chart { display:none; }
       #g-over { z-index:20; }
       @media(max-width:800px) { #game .tools { grid-template-columns:repeat(2,minmax(0,1fr)); } .totals { gap:16px; font-size:13px; } }
+      #g-menu {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: none;
+        place-items: center;
+        background: rgba(4, 6, 10, 0.86);
+        text-align: center;
+      }
+      body.game #g-menu.show { display: grid; }
+      #g-menu > div { max-width: 560px; padding: 30px 34px; }
+      #g-menu h1 { margin: 0 0 6px; font-size: 32px; }
+      #g-menu p { margin: 0 0 22px; color: #b6bfcc; line-height: 1.5; }
+      #g-menu .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      #g-menu button {
+        padding: 18px 16px;
+        font: inherit;
+        color: #e8edf5;
+        text-align: left;
+        background: #131820;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      #g-menu button:hover { border-color: #5ad1ff; background: #19202a; }
+      #g-menu button b { display: block; margin-bottom: 6px; font-size: 18px; }
+      #g-menu button small { color: #8f9bad; line-height: 1.4; }
+      .ai-note { display: none; margin: 8px 0; padding: 10px 12px; font-size: 12px; line-height: 1.5; color: #cfd6e0; background: rgba(255, 255, 255, 0.05); border-radius: 8px; }
+      .ai-note b { display: block; margin-bottom: 4px; color: #5ee6a8; }
+      body.one-player .ai-note { display: block; }
+      body.one-player [data-player="curber"] .private-controls,
+      body.one-player [data-player="curber"] [data-reveal] { display: none !important; }
     </style>
   </head>
   <body>
@@ -382,6 +414,7 @@
       </section>
       <section class="player-panel" data-player="curber">
         <div class="player-top"><h3>Curber</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in curber">+</button><button data-zoom="1.25" aria-label="Zoom out curber">-</button><button data-zoom="fit">Whole map</button></div></div>
+        <div class="ai-note"><b>The computer is the Curber</b><span id="g-ai-log">Watching the city…</span></div>
         <button data-reveal aria-expanded="false">Show / hide my points &amp; controls</button>
         <div class="private-controls"><h3>Action points <b id="g-cp">0</b></h3><div class="tools">
         <button data-act="lockdown">Lockdown<small>I | 30m | click map | <span data-cost></span></small></button>
@@ -392,6 +425,16 @@
         </div><p id="g-toast-curber"></p></div>
         <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
       </section>
+    </div>
+    <div id="g-menu">
+      <div>
+        <h1>Outbreak Göteborg</h1>
+        <p>Spread a virus through the city, or stop it. A round lasts 3 minutes and stands for 60 days.</p>
+        <div class="choices">
+          <button data-players="1"><b>1 player</b><small>You are the virus. The computer plays the Curber, and gives you a head start before it reacts.</small></button>
+          <button data-players="2"><b>2 players</b><small>One plays the Spreader, the other the Curber, on a shared screen.</small></button>
+        </div>
+      </div>
     </div>
     <div id="g-over"><div><h1 id="g-win"></h1><p id="g-sum"></p><button onclick="location.reload()">Play again</button></div></div>
     <div id="plan">
