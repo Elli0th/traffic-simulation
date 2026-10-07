@@ -3,6 +3,9 @@
 // and maps touches to player actions (Left = Spreader, Right = Curber) with visual ripple feedback.
 
 import { decodeScan } from './scan.js';
+import { applyHomography } from './homography.js';
+
+const MAP_KEY = 'lidar_to_table';
 
 export class LidarTouchController {
   constructor(options = {}) {
@@ -35,6 +38,14 @@ export class LidarTouchController {
       minY: 150.0,
       maxY: 1050.0,
     };
+    // The four-point calibration made on the lidar page (lidar.html), when that page has sent it: it
+    // allows for the lidar being turned or off-centre, which the fixed box above cannot. Kept between
+    // openings; the box and its nudge keys are what is used until one arrives.
+    this.toTable = null;
+    try {
+      const kept = JSON.parse((typeof localStorage !== 'undefined' && localStorage.getItem(MAP_KEY)) || 'null');
+      if (Array.isArray(kept) && kept.length === 9) this.toTable = kept;
+    } catch {}
     this.clusterRadius = options.clusterRadius || 80.0; // mm
     this.minPoints = options.minPoints || 2;
     this.onTap = options.onTap || null; // (side, u, v, screenX, screenY) => void
@@ -74,6 +85,28 @@ export class LidarTouchController {
       this.feedbackUntil = performance.now() + 2500;
       console.log(`[LidarTouch] Calibration updated: Y=${this.yOffset}mm, X=${this.xOffset}mm`);
     }
+  }
+
+  // H is the lidar page's homography from its own millimetres (x = r cos a, y = r sin a) to the picture.
+  setCalibration(H) {
+    if (!Array.isArray(H) || H.length !== 9 || !H.every(Number.isFinite)) return;
+    if (!this.toTable) {
+      this.feedbackText = 'Lidar: using the calibration from the lidar page';
+      this.feedbackUntil = performance.now() + 2500;
+    }
+    this.toTable = H;
+    try { localStorage.setItem(MAP_KEY, JSON.stringify(H)); } catch {}
+  }
+
+  // Where a point (in this file's millimetres: x = r sin a, y = r cos a) is on the picture, 0 to 1 each way.
+  place(x, y) {
+    if (this.toTable) return applyHomography(this.toTable, y, x);
+    const minX = this.tableBounds.minX + this.xOffset;
+    const maxX = this.tableBounds.maxX + this.xOffset;
+    const minY = this.tableBounds.minY + this.yOffset;
+    const maxY = this.tableBounds.maxY + this.yOffset;
+    // Horizontally inverted mapping for ceiling projector alignment:
+    return [1.0 - (x - minX) / (maxX - minX), (y - minY) / (maxY - minY)];
   }
 
   start() {
@@ -143,6 +176,13 @@ export class LidarTouchController {
       const maxX = this.tableBounds.maxX + this.xOffset;
       const minY = this.tableBounds.minY + this.yOffset;
       const maxY = this.tableBounds.maxY + this.yOffset;
+
+      if (this.toTable) {
+        // On the picture, or within a few centimetres of its edge.
+        const [u, v] = this.place(x, y);
+        if (u > -0.03 && u < 1.03 && v > -0.03 && v < 1.03) candidates.push({ x, y });
+        continue;
+      }
 
       // Check if within physical table projection box (with 40mm margin)
       if (
@@ -225,9 +265,9 @@ export class LidarTouchController {
         touch.y = c.y;
         touch.lastSeen = now;
 
-        // Horizontally inverted mapping for ceiling projector alignment:
-        const normU = Math.max(0, Math.min(1, 1.0 - (c.x - minX) / (maxX - minX)));
-        const normV = Math.max(0, Math.min(1, (c.y - minY) / (maxY - minY)));
+        const [rawU, rawV] = this.place(c.x, c.y);
+        const normU = Math.max(0, Math.min(1, rawU));
+        const normV = Math.max(0, Math.min(1, rawV));
         touch.u = normU;
         touch.v = normV;
         touch.side = normU < 0.5 ? 'spreader' : 'curber';
@@ -247,8 +287,9 @@ export class LidarTouchController {
     // Add new clusters
     clusters.forEach((c, idx) => {
       if (!matchedClusters.has(idx)) {
-        const normU = Math.max(0, Math.min(1, 1.0 - (c.x - minX) / (maxX - minX)));
-        const normV = Math.max(0, Math.min(1, (c.y - minY) / (maxY - minY)));
+        const [rawU, rawV] = this.place(c.x, c.y);
+        const normU = Math.max(0, Math.min(1, rawU));
+        const normV = Math.max(0, Math.min(1, rawV));
         const id = this.nextId++;
         const touch = {
           id,

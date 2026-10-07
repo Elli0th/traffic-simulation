@@ -1342,6 +1342,7 @@ if (game) {
     },
   });
   lidarTouch.start();
+  relay.on('lidar-map', (m) => lidarTouch.setCalibration(m?.toTable));
 }
 
 const markerPoint = new THREE.Vector3();
