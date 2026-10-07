@@ -61,6 +61,30 @@ Run everything from the live folder, `.claude/worktrees/game-room-api`.
 
    Then stop the server (Ctrl+C). The recording is complete once the server has stopped.
 
+## A slot that shows the game
+
+Same start as above (steps 1 and 2: the recording server, the lidar page visible in Brave), then:
+
+1. **Take the room for the game.** This is the step that touches the projector and the TVs.
+
+   ```bash
+   npm run room boot
+   ```
+
+   The projector opens `/?game=table` on the menu, the TVs their dashboards. It stops with what
+   to do if the wifi, the server or the lidar is not ready.
+
+2. **Calibrate on the game.** Capture the empty table, then press Calibrate on the lidar page. The
+   nine circles are drawn over the game, menu included; under 3% is good. Skip this only if the
+   table, lidar and projector have not moved since the last one.
+
+3. **Play.** A fingertip held still presses what is under it: the menu, the action buttons, the
+   power cards, Pause and Resume, End game. In a solo round the whole table is the one player's.
+   The seismic trench takes two taps, its start and then its end (the mouse drags it).
+   The left TV turns to the 3D city in a solo round and the right one follows the role.
+
+4. **Hand the room back** with `npm run room idle`, then stop the server.
+
 ## Afterwards
 
 ```bash

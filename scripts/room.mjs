@@ -127,7 +127,8 @@ async function serverPort() {
 async function showGame(base) {
   await call('projector', '/show', { url: `${base}/?game=table` });
   await call('tv-1', '/show', { url: `${base}/dashboard.html?side=spreader` });
-  await call('tv-2', '/show', { url: `${base}/dashboard.html?side=curber` });
+  // tv=2 lets this one follow the player's role in a solo round; the left TV turns to the 3D city by itself.
+  await call('tv-2', '/show', { url: `${base}/dashboard.html?side=curber&tv=2` });
 }
 
 const [action = 'status', what = ''] = process.argv.slice(2);

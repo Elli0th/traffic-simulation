@@ -1298,6 +1298,7 @@ if (game) {
     for (const b of panel.querySelectorAll('[data-zoom]')) b.addEventListener('click', () => b.dataset.zoom === 'fit' ? updateGameCamera(side, true) : zoomGame(side, Number(b.dataset.zoom)));
   }
   let stroke = null;
+  let trenchStart = null; // the first of the lidar's two taps for a trench
   renderer.domElement.addEventListener('pointerdown', e => {
     if (e.button !== 0 || e.shiftKey) return;
     e.stopImmediatePropagation();
@@ -1363,21 +1364,47 @@ if (game) {
       if (calibrating) return; // the finger on the calibration circle is not playing
       const under = document.elementFromPoint(screenX, screenY)?.closest('button, [data-home], [data-reveal]');
       relay.send('record', { what: 'press', page: 'game', side, u, v, on: under ? under.dataset.act || under.dataset.zoom || under.textContent.trim().slice(0, 40) : 'map', phase: game.phase });
+      // Solo has one player and one map across the whole table, so every touch is theirs.
+      if (soloRole) side = soloRole;
       activeSide = side;
       // 1. Check if a game button was tapped
       const elAtPoint = document.elementFromPoint(screenX, screenY);
-      const actBtn = elAtPoint?.closest('#game button, [data-home], #g-over button, #g-menu [data-players]');
+      const actBtn = elAtPoint?.closest('#game button, [data-home], #g-over button, #g-paused button, #g-menu [data-players]');
       if (actBtn && !actBtn.disabled) {
         if (actBtn.dataset.act) doAction(side, actBtn.dataset.act);
         else actBtn.click();
         return;
       }
-      // 2. Map tap to map world coordinate
+      // 2. Map tap to map world coordinate. A touch on a panel beside the buttons is not a touch on the map.
+      if (!sideAt(screenX, screenY, innerWidth, innerHeight)) return;
+      if (gameViews[side].armed !== 'barrier') trenchStart = null;
       const fakeEvent = { clientX: screenX, clientY: screenY };
       const p = pick(fakeEvent, side);
       if (!p) return;
       if (game.phase === 'setup' && side === 'spreader') {
         doAction(side, 'seed', p);
+      } else if (gameViews[side].armed === 'barrier') {
+        // The lidar clicks but does not drag here, so the trench takes two taps: its start, then its end.
+        if (paused) return;
+        if (!trenchStart) {
+          trenchStart = p;
+          game.barrierPreview = [p];
+          toast(side, 'Trench start set. Tap where it should end.');
+          return;
+        }
+        const from = trenchStart;
+        trenchStart = null;
+        game.barrierPreview = null;
+        const reach = Math.hypot(p.x - from.x, p.z - from.z);
+        const length = Math.min(1800, reach);
+        const steps = Math.max(1, Math.ceil(length / 40));
+        const points = Array.from({ length: steps + 1 }, (_, i) => ({ x: from.x + ((p.x - from.x) * (i / steps) * length) / (reach || 1), z: from.z + ((p.z - from.z) * (i / steps) * length) / (reach || 1) }));
+        if (length >= 40 && game.addBarrier(points)) {
+          gameViews.curber.armed = null;
+          trenchEffects.commit(game.barriers.at(-1), game.time);
+          toast('curber', 'Seismic trench detonated! The shattered ground stays destroyed for the round. Infection cannot cross it.');
+        } else toast(side, 'No trench: tap two places further apart.');
+        updateGame();
       } else if (gameViews[side].armed) {
         doAction(side, gameViews[side].armed, p);
       } else {
