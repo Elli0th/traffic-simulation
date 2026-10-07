@@ -33,16 +33,28 @@ function makeGame(numAgents = 50) {
   return game;
 }
 
-// 1. Test Hue Lighting
-check('hue lights ramp from calm cyan to emergency crimson as virus spreads', () => {
+// 1. Test Spatial Tug-of-War Hue Lighting
+check('spatial hue lights initialize with Left Red, Right Green, Middle White', () => {
   const lighting = new VirusLighting({ enabled: false });
   const game = makeGame();
 
   // Baseline state (0 infections)
   const base = lighting.computeLighting(game);
-  assert.ok(base.threat < 0.05, `baseline threat ${base.threat}`);
-  assert.ok(base.spots.bri < 100, `baseline brightness ${base.spots.bri}`);
-  assert.ok(base.spots.hue > 30000, `baseline hue ${base.spots.hue} should be cyan`);
+  assert.ok(base);
+  // Left side: Red (Spreader)
+  assert.equal(base.left.hue, 0, 'left lights start pure red');
+  assert.equal(base.left.sat, 254);
+  // Right side: Green (Curber / Government)
+  assert.equal(base.right.hue, 25500, 'right lights start green');
+  assert.equal(base.right.sat, 254);
+  // Middle: White (Neutral contested zone)
+  assert.equal(base.middle.sat, 0, 'middle lights start uncolored white');
+  assert.equal(base.middle.ct, 370, 'middle lights use warm/daylight white color temp');
+});
+
+check('virus expansion causes red intensity to ramp and spread into middle lights', () => {
+  const lighting = new VirusLighting({ enabled: false });
+  const game = makeGame();
 
   // Severe infection state (simulate 60% active infections)
   for (let i = 0; i < 30; i++) {
@@ -51,26 +63,36 @@ check('hue lights ramp from calm cyan to emergency crimson as virus spreads', ()
   game.ever = 35;
 
   const severe = lighting.computeLighting(game);
-  assert.ok(severe.threat > 0.8, `severe threat ${severe.threat}`);
-  assert.ok(severe.spots.bri > 220, `severe brightness ${severe.spots.bri} should be glaring`);
-  assert.ok(severe.spots.hue < 3000, `severe hue ${severe.spots.hue} should be deep crimson red`);
-  assert.ok(severe.spots.sat > 240, `severe saturation ${severe.spots.sat}`);
+  assert.ok(severe.balance > 0.5, `balance should strongly favor virus: ${severe.balance}`);
+  assert.ok(severe.left.bri > 220, `left red intensity should ramp up: ${severe.left.bri}`);
+  assert.ok(severe.middle.hue <= 14000, `red/amber color spreads into center spots: hue ${severe.middle.hue}`);
+  assert.ok(severe.middle.sat > 150, `middle lights saturate towards red: sat ${severe.middle.sat}`);
+  assert.ok(severe.right.bri < 120, `right green territory dims: bri ${severe.right.bri}`);
 });
 
-check('active party triggers spreader strip burst', () => {
+check('active party triggers maximum spreader left-side burst', () => {
   const lighting = new VirusLighting({ enabled: false });
   const game = makeGame();
-
-  // No party
-  const normal = lighting.computeLighting(game);
-  assert.ok(normal.spreaderStrip.bri < 200);
 
   // Add active party
   game.time = 50;
   game.parties.push({ x: 1000, z: 1000, until: 200, members: [] });
 
   const partyState = lighting.computeLighting(game);
-  assert.equal(partyState.spreaderStrip.bri, 254, 'party triggers maximum strip brightness');
+  assert.equal(partyState.left.bri, 254, 'party triggers maximum left strip/spot brightness');
+});
+
+check('game over floods entire room with winner color', () => {
+  const lighting = new VirusLighting({ enabled: false });
+  const game = makeGame();
+  game.phase = 'over';
+  game.ever = 25; // >= 30% of 50 agents -> Virus win
+
+  const winState = lighting.computeLighting(game);
+  assert.equal(winState.left.hue, 0, 'all lights red on virus win');
+  assert.equal(winState.middle.hue, 0);
+  assert.equal(winState.right.hue, 0);
+  assert.equal(winState.middle.bri, 254);
 });
 
 // 2. Test Asymmetric Dashboard Intelligence
@@ -116,15 +138,37 @@ check('dashboard computes high-value targets for Spreader and hospital load for 
   const payload = buildDashboardPayload(game, [], 45);
 
   // Spreader intel
-  assert.ok(payload.spreaderIntel.targets.length > 0, 'has vulnerable targets');
-  assert.ok(payload.spreaderIntel.targets[0].susceptible > 0);
-  assert.ok(payload.spreaderIntel.deck.length === 4, 'spreader has 4 actions in deck');
-  assert.ok(payload.spreaderIntel.recommended.length > 5);
+  assert.ok(payload.spreaderData.targets.length > 0, 'has vulnerable targets');
+  assert.ok(payload.spreaderData.targets[0].susceptible > 0);
+  assert.ok(payload.spreaderData.deck.length === 4, 'spreader has 4 actions in deck');
+  assert.ok(payload.spreaderData.recommended.length > 5);
 
   // Curber intel
-  assert.ok(payload.curberIntel.deck.length === 5, 'curber has 5 actions in deck');
-  assert.ok(payload.curberIntel.hospitalStress >= 0);
-  assert.ok(payload.curberIntel.recommended.length > 5);
+  assert.ok(payload.curberData.deck.length === 5, 'curber has 5 actions in deck');
+  assert.ok(payload.curberData.hospitalStress >= 0);
+  assert.ok(payload.curberData.recommended.length > 5);
+});
+
+check('dashboard enforces genuine information asymmetry between Spreader and Curber', () => {
+  const game = makeGame();
+  game.time = 150;
+  // 10 exposed (latent E, asymptomatic) and 5 infectious (I)
+  for (let i = 0; i < 10; i++) game.agents[i].inf = 1; // E
+  for (let i = 10; i < 15; i++) game.agents[i].inf = 2; // I
+  game.ever = 15;
+
+  const payload = buildDashboardPayload(game, [], 45);
+
+  // Spreader sees ground truth: both E and I are infected, plus stealth carriers
+  assert.ok(payload.spreaderData.trueInfectedCount > 0);
+  assert.ok(payload.spreaderData.stealthCarriers > 0, 'Spreader sees latent incubation carriers');
+  assert.ok(payload.spreaderData.stealthPct > 0);
+
+  // Curber only sees confirmed symptomatic fraction (~45% of I), blind to latent carriers
+  assert.ok(payload.curberData.confirmedActiveCount < payload.spreaderData.trueInfectedCount,
+    'Curber confirmed cases must be significantly lower than ground truth infected count');
+  assert.ok(payload.curberData.approvalRating === 100, 'Baseline approval rating intact');
 });
 
 console.log(`\n${passed} dashboard & lighting tests passed.`);
+

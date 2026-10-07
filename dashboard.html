@@ -400,15 +400,15 @@
       </div>
 
       <div class="header-stats">
-        <div class="stat-block">
+        <div class="stat-block" id="stat-block-1">
           <small>Infection Share</small>
           <b id="m-share">0.0%</b>
         </div>
-        <div class="stat-block">
+        <div class="stat-block" id="stat-block-2">
           <small>Active Cases</small>
           <b id="m-active" style="color: #ff5c7c">0</b>
         </div>
-        <div class="stat-block">
+        <div class="stat-block" id="stat-block-3">
           <small>Immune / Vac</small>
           <b id="m-immune" style="color: #00e5a3">0</b>
         </div>
@@ -525,17 +525,34 @@
         if (!state) return;
         lastState = state;
 
-        // Header Metrics
-        const c = state.counts;
-        const total = Math.max(1, state.population || 600000);
-        document.getElementById('m-share').textContent = `${Math.round((c.share || 0) * 1000) / 10}%`;
-        document.getElementById('m-active').textContent = (c.people?.active || c.active || 0).toLocaleString();
-        document.getElementById('m-immune').textContent = (c.people?.immune || c.r || 0).toLocaleString();
-        document.getElementById('m-day').textContent = `DAY ${state.day || 1}`;
-
         const left = Math.max(0, state.timeLeft || 0);
         document.getElementById('m-timer').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+        document.getElementById('m-day').textContent = `DAY ${state.day || 1}`;
         document.getElementById('f-points').textContent = `${isSpreader ? state.points?.spreader || 0 : state.points?.curber || 0} PTS`;
+
+        if (isSpreader) {
+          // --- SPREADER ASYMMETRIC GROUND TRUTH ---
+          const sp = state.spreaderData || {};
+          document.querySelector('#stat-block-1 small').textContent = 'True Infection Share';
+          document.getElementById('m-share').textContent = `${Math.round((sp.trueShare || 0) * 1000) / 10}%`;
+
+          document.querySelector('#stat-block-2 small').textContent = 'True Biological Cases';
+          document.getElementById('m-active').textContent = (sp.trueInfectedCount || 0).toLocaleString();
+
+          document.querySelector('#stat-block-3 small').textContent = 'Asymptomatic Stealth';
+          document.getElementById('m-immune').textContent = `${(sp.stealthCarriers || 0).toLocaleString()} (${sp.stealthPct || 0}% unseen)`;
+        } else {
+          // --- CURBER ASYMMETRIC OFFICIAL REPORTS ---
+          const cb = state.curberData || {};
+          document.querySelector('#stat-block-1 small').textContent = 'Confirmed Infection Share';
+          document.getElementById('m-share').textContent = `${Math.round((cb.confirmedShare || 0) * 1000) / 10}%`;
+
+          document.querySelector('#stat-block-2 small').textContent = 'Confirmed Symptomatic Cases';
+          document.getElementById('m-active').textContent = (cb.confirmedActiveCount || 0).toLocaleString();
+
+          document.querySelector('#stat-block-3 small').textContent = 'Government Approval';
+          document.getElementById('m-immune').textContent = `${cb.approvalRating || 100}% TRUST`;
+        }
 
         // Last Actions
         const myAct = isSpreader ? state.lastActions?.spreader : state.lastActions?.curber;
@@ -560,15 +577,15 @@
         }
 
         // Recommendation
-        const rec = isSpreader ? state.spreaderIntel?.recommended : state.curberIntel?.recommended;
+        const rec = isSpreader ? state.spreaderData?.recommended : state.curberData?.recommended;
         if (rec) document.getElementById('rec-text').textContent = rec;
 
         // Targets / Hotspots List
         const listEl = document.getElementById('intel-list');
         listEl.innerHTML = '';
 
-        if (isSpreader && state.spreaderIntel?.targets) {
-          state.spreaderIntel.targets.forEach((t) => {
+        if (isSpreader && state.spreaderData?.targets) {
+          state.spreaderData.targets.forEach((t) => {
             const row = document.createElement('div');
             row.className = 'intel-row';
             row.innerHTML = `
@@ -580,14 +597,14 @@
             `;
             listEl.appendChild(row);
           });
-        } else if (!isSpreader && state.curberIntel?.hotspots) {
-          state.curberIntel.hotspots.forEach((h) => {
+        } else if (!isSpreader && state.curberData?.hotspots) {
+          state.curberData.hotspots.forEach((h) => {
             const row = document.createElement('div');
             row.className = 'intel-row';
             row.innerHTML = `
               <div>
                 <div class="name">${h.district}</div>
-                <div class="sub">${h.cases.toLocaleString()} active infections</div>
+                <div class="sub">${h.cases.toLocaleString()} confirmed symptomatic cases</div>
               </div>
               <div class="intel-badge ${h.locked ? 'safe' : 'hot'}">${h.recommendation}</div>
             `;
@@ -596,7 +613,7 @@
         }
 
         // Action Deck
-        const deck = isSpreader ? state.spreaderIntel?.deck : state.curberIntel?.deck;
+        const deck = isSpreader ? state.spreaderData?.deck : state.curberData?.deck;
         const deckEl = document.getElementById('deck-grid');
         deckEl.innerHTML = '';
         if (deck) {
@@ -619,41 +636,42 @@
         secEl.innerHTML = '';
 
         if (isSpreader) {
-          const transitCases = state.spreaderIntel?.transitCases || 0;
-          const activeParties = state.spreaderIntel?.activeParties || 0;
+          const transitCases = state.spreaderData?.transitCases || 0;
+          const activeParties = state.spreaderData?.activeParties || 0;
           secEl.innerHTML = `
             <div class="intel-row">
               <div>
                 <div class="name">Public Transit Super-Spreader Vectors</div>
-                <div class="sub">Trams & Buses spreading infection across Gothenburg lines</div>
+                <div class="sub">Trams & Buses spreading latent infection across lines</div>
               </div>
               <div class="intel-badge hot">${transitCases.toLocaleString()} transit cases</div>
             </div>
             <div class="intel-row">
               <div>
                 <div class="name">Active Super-Spreader Gatherings</div>
-                <div class="sub">Parties currently transmitting in crowded zones</div>
+                <div class="sub">Unmasked parties multiplying transmissions in secret</div>
               </div>
               <div class="intel-badge ${activeParties > 0 ? 'hot' : ''}">${activeParties} active parties</div>
             </div>
           `;
         } else {
-          const hosp = state.curberIntel?.hospitalized || 0;
-          const cap = state.curberIntel?.hospitalCapacity || 9000;
-          const stress = state.curberIntel?.hospitalStress || 0;
-          const vacStatus = state.curberIntel?.vaccineUptakeStatus || '85%';
+          const cb = state.curberData || {};
+          const hosp = cb.hospitalized || 0;
+          const cap = cb.hospitalCapacity || 9000;
+          const stress = cb.hospitalStress || 0;
+          const vacStatus = cb.vaccineUptakeStatus || '85%';
           secEl.innerHTML = `
             <div class="intel-row">
               <div>
-                <div class="name">Hospital &amp; ICU Bed Saturation</div>
+                <div class="name">Hospital Bed &amp; ICU Saturation</div>
                 <div class="sub">${hosp.toLocaleString()} hospitalized of ${cap.toLocaleString()} capacity</div>
               </div>
               <div class="intel-badge ${stress > 70 ? 'hot' : 'safe'}">${stress}% SATURATION</div>
             </div>
             <div class="intel-row">
               <div>
-                <div class="name">Vaccine Uptake &amp; Resistance</div>
-                <div class="sub">Public willingness to accept vaccination</div>
+                <div class="name">Vaccine Uptake &amp; Public Compliance</div>
+                <div class="sub">Willingness to vaccinate and observe hygiene orders</div>
               </div>
               <div class="intel-badge ${vacStatus.includes('25%') ? 'hot' : 'safe'}">${vacStatus}</div>
             </div>

@@ -1,5 +1,7 @@
 // Computes asymmetric tactical intelligence for the Spreader and Curber dashboards.
-// Translates raw simulation state into high-level actionable metrics and feeds.
+// Provides genuine information asymmetry:
+// - Spreader sees the TRUE biological ground truth (including asymptomatic stealth carriers).
+// - Curber sees CONFIRMED / SYMPTOMATIC cases only, plus government approval and healthcare load.
 
 import { ACTIONS, DAY, POPULATION, HOSPITAL } from '../virus.js';
 
@@ -62,14 +64,20 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
   const lastSpreader = formatAction(spreaderActions[spreaderActions.length - 1]);
   const lastCurber = formatAction(curberActions[curberActions.length - 1]);
 
-  // 2. Compute Spreader Actionable Intel
-  // Identify high-density districts with susceptible people not covered by lockdowns
+  // 2. Compute Ground Truth (Visible to Spreader)
+  const trueActive = counts.e + counts.i;
+  const trueEver = counts.ever;
+  const trueShare = counts.share;
+  const stealthCarriers = counts.e; // latent incubation carriers unknown to government
+  const stealthPct = trueActive > 0 ? Math.round((stealthCarriers / trueActive) * 100) : 0;
+
+  // Active zones
   const activeLockdowns = game.lockdowns.filter((z) => (z.start || 0) <= gameTime && z.until > gameTime);
   const activeParties = game.parties.filter((p) => p.until > gameTime);
 
+  // Spreader Targets: High-density districts with susceptible people free of lockdowns
   const targets = DISTRICTS.map((d) => {
     const isLocked = activeLockdowns.some((z) => Math.hypot(z.x - d.x, z.z - d.z) < (z.r || 220) + 100);
-    // Count susceptible agents near this district
     let susCount = 0;
     for (const p of game.agents) {
       if (p.inf === 0 && Math.hypot(p.x - d.x, p.z - d.z) < d.radius) susCount++;
@@ -85,15 +93,12 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 
-  // Transit vectors
   const transitCases = Math.round((game.fromTransit || 0) * scale);
 
-  // Spreader action cards deck
   const spreaderDeck = ['party', 'antimask', 'antivaxx', 'sickwork'].map((k) => {
     const act = ACTIONS[k];
     const readyAt = game.ready[k] || 0;
     const cooldown = Math.max(0, readyAt - gameTime);
-    const available = game.available(k);
     return {
       key: k,
       label: act.label,
@@ -101,12 +106,22 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
       cooldownSec: cooldown,
       ready: cooldown <= 0,
       affordable: game.points.spreader >= act.cost,
-      available,
+      available: game.available(k),
     };
   });
 
-  // 3. Compute Curber Actionable Intel
-  // Identify top active infection hotspots from game heat
+  // 3. Compute Confirmed Partial Intelligence (Visible to Curber / Government)
+  // Government ONLY sees confirmed symptomatic cases (~40% of infectious + isolated/hospitalized)
+  const confirmedActiveCount = Math.round((counts.i * 0.45 + (counts.iso || 0)) * scale);
+  const confirmedEverCount = Math.round((counts.ever * 0.5 + (counts.r || 0) * 0.2) * scale);
+  const confirmedShare = confirmedEverCount / POPULATION;
+
+  const approvalRating = game.approval != null ? Math.round(game.approval) : 100;
+  const hospitalized = counts.people.hospital;
+  const hospitalCapacity = Math.round(POPULATION * 0.015); // ~9,000 beds
+  const hospitalStress = Math.min(100, Math.round((hospitalized / hospitalCapacity) * 100));
+
+  // Confirmed Hotspots
   const heatCells = game.heat ? game.heat(120) : [];
   const hotspots = heatCells
     .slice(0, 3)
@@ -115,28 +130,16 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
       const isLocked = activeLockdowns.some((z) => Math.hypot(z.x - c.x, z.z - c.z) < (z.r || 220));
       return {
         district: loc,
-        cases: Math.round(c.n * scale),
+        cases: Math.round(c.n * scale * 0.45), // Confirmed symptomatic only
         locked: isLocked,
         recommendation: isLocked ? 'CONTAINED' : 'QUARANTINE RECOMMENDED',
       };
     });
 
-  // Hospital & ICU stress
-  const hospitalized = counts.people.hospital;
-  const hospitalCapacity = Math.round(POPULATION * 0.015); // baseline capacity ~9,000 beds
-  const hospitalStress = Math.min(100, Math.round((hospitalized / hospitalCapacity) * 100));
-
-  // Vaccine progress
-  const vaccinatedCount = counts.people.immune;
-  const vaccinatedPct = Math.round((counts.r / total) * 100);
-  const vaccineUptakeNormal = !game.effects.some((e) => e.kind === 'antivaxx' && e.until > gameTime);
-
-  // Curber action deck
   const curberDeck = ['lockdown', 'vaccines', 'distancing', 'hospitals', 'newvaccine'].map((k) => {
     const act = ACTIONS[k];
     const readyAt = game.ready[k] || 0;
     const cooldown = Math.max(0, readyAt - gameTime);
-    const available = game.available(k);
     return {
       key: k,
       label: act.label,
@@ -144,17 +147,18 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
       cooldownSec: cooldown,
       ready: cooldown <= 0,
       affordable: game.points.curber >= act.cost,
-      available,
+      available: game.available(k),
     };
   });
+
+  const vaccineUptakeNormal = !game.effects.some((e) => e.kind === 'antivaxx' && e.until > gameTime);
 
   return {
     gameTime,
     day,
     timeLeft,
     phase: game.phase,
-    population: game.population || POPULATION,
-    counts,
+    population: POPULATION,
     scale,
     points: {
       spreader: Math.floor(game.points.spreader),
@@ -164,25 +168,39 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
       spreader: lastSpreader,
       curber: lastCurber,
     },
-    spreaderIntel: {
+    // ASYMMETRIC SPREADER DATA (True Biological Ground Truth)
+    spreaderData: {
+      trueInfectedCount: Math.round(trueActive * scale),
+      trueEverCount: Math.round(trueEver * scale),
+      trueShare: trueShare,
+      stealthCarriers: Math.round(stealthCarriers * scale),
+      stealthPct: stealthPct,
       targets,
       transitCases,
       activeParties: activeParties.length,
       deck: spreaderDeck,
       recommended: targets[0] ? `Host Party in ${targets[0].district} (${targets[0].susceptible.toLocaleString()} unprotected)` : 'Infiltrate workplace',
     },
-    curberIntel: {
-      hotspots,
+    // ASYMMETRIC CURBER DATA (Confirmed Official Government Reports)
+    curberData: {
+      confirmedActiveCount,
+      confirmedEverCount,
+      confirmedShare,
+      approvalRating,
       hospitalized,
       hospitalCapacity,
       hospitalStress,
-      vaccinatedCount,
-      vaccinatedPct,
+      vaccinatedCount: counts.people.immune,
+      vaccinatedPct: Math.round((counts.r / total) * 100),
       vaccineEfficacy: Math.round((game.vaccineEfficacy || 0.65) * 100),
       vaccineUptakeStatus: vaccineUptakeNormal ? '85% (Normal)' : '25% (Suppressed by Disinformation!)',
       activeLockdowns: activeLockdowns.length,
+      hotspots,
       deck: curberDeck,
       recommended: hotspots.find((h) => !h.locked) ? `Lockdown ${hotspots.find((h) => !h.locked).district}` : 'Roll out Free Vaccines citywide',
     },
+    // Backwards-compatible aliases
+    get spreaderIntel() { return this.spreaderData; },
+    get curberIntel() { return this.curberData; },
   };
 }

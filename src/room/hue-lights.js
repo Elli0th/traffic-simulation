@@ -1,11 +1,21 @@
-// Controls Philips Hue room lighting to react dynamically to the virus outbreak.
-// As infection spreads, ceiling spots ramp from calm clinic cyan to glaring emergency crimson,
-// while TV backstrips reflect the asymmetric factions (TV 1 = Spreader red/orange, TV 2 = Curber cyan/blue).
+// Spatial Philips Hue lighting for Outbreak: Göteborg.
+// Physical layout:
+// - Left lights [1 (TV 1 Strip), 2, 3 (Left Spots)]: Starts RED (Spreader).
+// - Middle lights [4, 5 (Center Spots)]: Starts WHITE (Contested neutral zone).
+// - Right lights [6, 7 (Right Spots), 8 (TV 2 Strip)]: Starts GREEN (Curber/Government).
+//
+// As the game progresses, colors and intensity shift dynamically:
+// - If the virus advances, RED intensifies and spreads into the middle spots (white -> amber -> red).
+// - If the government contains it, GREEN intensifies and spreads into the middle spots (white -> cyan -> green).
+// - Match conclusion: Entire room pulses victorious RED (Virus win) or GREEN (Government win).
 
 const HUE_USER = 'ckwwi95MBr7z3fnL-CwSbtfmlfOtjmLK9fGPPkCu';
-const SPOTS = [2, 3, 4, 5, 6, 7];
-const STRIP_SPREADER = 1; // TV 1 backstrip
-const STRIP_CURBER = 8;   // TV 2 backstrip
+
+export const LIGHT_GROUPS = {
+  left: [1, 2, 3],   // TV 1 strip + Left spots
+  middle: [4, 5],     // Center spots
+  right: [6, 7, 8],  // Right spots + TV 2 strip
+};
 
 export class VirusLighting {
   constructor(options = {}) {
@@ -17,7 +27,7 @@ export class VirusLighting {
     this.lastState = null;
   }
 
-  // Calculates lighting parameters from the current outbreak state.
+  // Calculates spatial lighting configuration
   computeLighting(game) {
     if (!game) return null;
     const c = game.counts();
@@ -25,48 +35,94 @@ export class VirusLighting {
     const activeShare = (c.e + c.i) / total;
     const everShare = c.ever / total;
 
-    // Threat level from 0.0 (calm baseline) to 1.0 (runaway disaster)
-    const threat = Math.min(1.0, activeShare * 3.5 + everShare * 1.2);
+    // Game balance: -1.0 (Government winning) to +1.0 (Virus winning)
+    const virusProgress = Math.min(1.0, everShare / 0.30); // 30% win condition
+    const approval = game.approval != null ? Math.max(0, game.approval / 100) : 1.0;
+    const timeAdv = Math.min(1.0, (game.time || 0) / (180 * 30));
+    const curberProgress = timeAdv * approval * (1.0 - activeShare * 2.0);
 
-    // Ceiling spot intensity:
-    // Low: calm cyan (hue ~40000, bri ~70, sat ~120)
-    // Mid: warning amber (hue ~12000, bri ~150, sat ~200)
-    // High: deep crimson red (hue ~0, bri ~254, sat ~254)
-    let spotHue;
-    if (threat < 0.25) {
-      const t = threat / 0.25;
-      spotHue = Math.round(40000 * (1 - t) + 14000 * t);
-    } else if (threat < 0.6) {
-      const t = (threat - 0.25) / 0.35;
-      spotHue = Math.round(14000 * (1 - t) + 5500 * t);
-    } else {
-      const t = (threat - 0.6) / 0.4;
-      spotHue = Math.round(5500 * (1 - t));
+    // Balance metric: negative = curber, positive = virus
+    const balance = Math.max(-1.0, Math.min(1.0, (virusProgress * 1.3) - (curberProgress * 0.9)));
+
+    // Active action flash states
+    const hasParty = Boolean(game.parties?.some((p) => p.until > game.time));
+    const hasLockdown = Boolean(game.lockdowns?.some((z) => (z.start || 0) <= game.time && z.until > game.time));
+
+    // 1. LEFT LIGHTS [1, 2, 3]: Always RED, intensity scales with virus progress
+    const leftBri = hasParty ? 254 : Math.round(130 + 124 * Math.max(0, balance + 0.4));
+    const leftState = {
+      on: true,
+      hue: hasParty ? 65000 : 0, // Pure red
+      sat: 254,
+      bri: Math.min(254, leftBri),
+      transitiontime: hasParty ? 2 : 6,
+    };
+
+    // 2. RIGHT LIGHTS [6, 7, 8]: Always GREEN, intensity scales with government containment
+    let rightBri = hasLockdown ? 254 : Math.round(130 + 124 * Math.max(0, -balance + 0.4));
+    let rightHue = 25500; // Emerald green
+    let rightSat = 254;
+
+    // If virus is overwhelming (> 65% balance), right lights dim and flicker amber
+    if (balance > 0.65) {
+      rightHue = 10000; // Amber warning
+      rightBri = Math.round(70 + 40 * (1 - balance));
     }
 
-    const spotBri = Math.round(70 + 184 * threat);
-    const spotSat = Math.round(120 + 134 * threat);
-
-    // Spreader TV strip (Light 1): Red/Orange, pulses during active parties
-    const hasParty = Boolean(game.parties?.some((p) => p.until > game.time));
-    const spreaderBri = hasParty ? 254 : Math.round(120 + 130 * threat);
-    const spreaderHue = hasParty ? 65000 : Math.round(2000 + 4000 * (1 - threat));
-
-    // Curber TV strip (Light 8): Cyan/Teal defense, intensifies with lockdowns & vaccination
-    const hasLockdown = Boolean(game.lockdowns?.some((z) => (z.start || 0) <= game.time && z.until > game.time));
-    const vaccineShare = c.r / total;
-    const curberBri = hasLockdown ? 254 : Math.round(100 + 140 * Math.min(1.0, vaccineShare * 2 + (hasLockdown ? 0.4 : 0)));
-    const curberHue = hasLockdown ? 38000 : 42000;
-
-    return {
-      threat,
-      spots: { on: true, bri: spotBri, hue: spotHue, sat: spotSat, transitiontime: 8 },
-      spreaderStrip: { on: true, bri: spreaderBri, hue: spreaderHue, sat: 254, transitiontime: hasParty ? 2 : 8 },
-      curberStrip: { on: true, bri: curberBri, hue: curberHue, sat: 220, transitiontime: hasLockdown ? 2 : 8 },
+    const rightState = {
+      on: true,
+      hue: rightHue,
+      sat: rightSat,
+      bri: Math.min(254, rightBri),
+      transitiontime: hasLockdown ? 2 : 6,
     };
+
+    // 3. MIDDLE LIGHTS [4, 5]: Start WHITE, spreads RED (if virus ahead) or GREEN (if curber ahead)
+    let midState = { on: true, transitiontime: 8 };
+
+    if (Math.abs(balance) < 0.15) {
+      // Neutral center: Daylight White
+      midState.ct = 370;
+      midState.sat = 0;
+      midState.bri = 130;
+    } else if (balance > 0.15) {
+      // Virus pushing into middle: White -> Warm Amber -> Crimson Red
+      const virusSpread = (balance - 0.15) / 0.85; // 0.0 to 1.0
+      const midHue = Math.round(14000 * (1 - virusSpread)); // 14000 (amber) -> 0 (red)
+      const midBri = Math.round(130 + 124 * virusSpread);
+      const midSat = Math.round(140 + 114 * virusSpread);
+      midState.hue = midHue;
+      midState.sat = midSat;
+      midState.bri = Math.min(254, midBri);
+    } else {
+      // Government pushing into middle: White -> Cool Cyan -> Emerald Green
+      const curberSpread = (-balance - 0.15) / 0.85; // 0.0 to 1.0
+      const midHue = Math.round(38000 * (1 - curberSpread) + 25500 * curberSpread);
+      const midBri = Math.round(130 + 124 * curberSpread);
+      const midSat = Math.round(140 + 114 * curberSpread);
+      midState.hue = midHue;
+      midState.sat = midSat;
+      midState.bri = Math.min(254, midBri);
+    }
+
+    // Check Win states
+    if (game.phase === 'over') {
+      const virusWon = everShare >= 0.30 || approval <= 0;
+      if (virusWon) {
+        // Deep blood red hold across all lights
+        const winRed = { on: true, hue: 0, sat: 254, bri: 254, transitiontime: 15 };
+        return { balance, left: winRed, middle: winRed, right: winRed };
+      } else {
+        // Cool emerald green hold across all lights
+        const winGreen = { on: true, hue: 25500, sat: 254, bri: 254, transitiontime: 15 };
+        return { balance, left: winGreen, middle: winGreen, right: winGreen };
+      }
+    }
+
+    return { balance, left: leftState, middle: midState, right: rightState };
   }
 
-  // Sends state to Hue bridge with rate-limiting.
+  // Sends state to Hue bridge with rate-limiting
   async update(game, force = false) {
     if (!this.enabled || !game) return;
     const now = Date.now();
@@ -77,18 +133,22 @@ export class VirusLighting {
     this.lastSent = now;
     this.lastState = target;
 
-    // Send asynchronously in background without blocking simulation
     this.dispatchState(target).catch(() => {});
   }
 
   async dispatchState(target) {
-    // 1. Update ceiling spots
-    for (const id of SPOTS) {
-      await this.setLight(id, target.spots);
+    // 1. Left lights (1, 2, 3)
+    for (const id of LIGHT_GROUPS.left) {
+      await this.setLight(id, target.left);
     }
-    // 2. Update TV backstrips
-    await this.setLight(STRIP_SPREADER, target.spreaderStrip);
-    await this.setLight(STRIP_CURBER, target.curberStrip);
+    // 2. Middle lights (4, 5)
+    for (const id of LIGHT_GROUPS.middle) {
+      await this.setLight(id, target.middle);
+    }
+    // 3. Right lights (6, 7, 8)
+    for (const id of LIGHT_GROUPS.right) {
+      await this.setLight(id, target.right);
+    }
   }
 
   async setLight(id, body) {
@@ -106,15 +166,13 @@ export class VirusLighting {
           body: json,
         });
         if (resp.ok) return;
-      } catch {
-        // Fallback to next URL
-      }
+      } catch {}
     }
   }
 
   async restoreNeutral() {
     const neutral = { on: true, bri: 140, ct: 350, transitiontime: 10 };
-    for (const id of [...SPOTS, STRIP_SPREADER, STRIP_CURBER]) {
+    for (const id of [1, 2, 3, 4, 5, 6, 7, 8]) {
       await this.setLight(id, neutral).catch(() => {});
     }
   }
