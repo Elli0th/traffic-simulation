@@ -95,9 +95,13 @@
         border-radius: 999px;
         font-size: 13px;
       }
-      /* Played on the table, the Curber's cards run along the bottom edge. */
-      body.vt-on #modes {
-        bottom: calc(13vh + 12px);
+      /* In the game the players' panels fill the bottom edge, so the switch sits in the bar at the top. */
+      body.game #modes {
+        left: auto;
+        right: 110px;
+        top: 8px;
+        bottom: auto;
+        z-index: 11;
       }
       #modes a {
         padding: 6px 14px;
@@ -339,6 +343,32 @@
         color: #9aa4b2;
         background: #000;
       }
+      body.game #hud { display:none; }
+      body.game #game { inset:0; width:auto; padding:0; border:0; background:none; backdrop-filter:none; pointer-events:none; z-index:10; }
+      .shared-stats { position:absolute; inset:0 0 auto; height:112px; box-sizing:border-box; padding:12px 20px; background:#101720; pointer-events:auto; }
+      .shared-stats h2 { display:flex; justify-content:space-between; }
+      .totals { display:flex; gap:40px; font-size:16px; margin-bottom:6px; }
+      .totals b { margin-left:10px; font-size:22px; font-variant-numeric:tabular-nums; }
+      .totals span:first-child b { color:#ff4545; } .totals span:last-child b { color:#50dda5; }
+      #game .player-panel { position:absolute; bottom:0; width:50%; height:224px; box-sizing:border-box; padding:8px 12px; background:#101720; border-top:1px solid #33404e; pointer-events:auto; overflow:auto; }
+      [data-player="spreader"] { left:0; border-right:2px solid #33404e; }
+      [data-player="curber"] { right:0; }
+      body.game::after { content:''; position:fixed; left:calc(50% - 1px); top:112px; bottom:224px; width:2px; background:#33404e; pointer-events:none; z-index:9; }
+      .player-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+      #game .player-top h3 { margin:0; }
+      .zoom-tools { display:flex; gap:4px; }
+      #game [data-reveal] { margin:6px 0; width:100%; text-align:center; touch-action:none; }
+      .private-controls { display:none; }
+      .player-panel.revealed .private-controls { display:block; }
+      #game .private-controls h3 { margin:2px 0 4px; }
+      #game .tools { grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; }
+      #game .tools button { font-size:11px; padding:5px; }
+      #game .tools small { font-size:10px; }
+      #game [id^="g-toast-"] { min-height:14px; margin:4px 0; color:#ffc233; font-size:11px; }
+      .pane-help { margin:4px 0; color:#8a98a8; font-size:10px; }
+      #game #g-chart { display:none; }
+      #g-over { z-index:20; }
+      @media(max-width:800px) { #game .tools { grid-template-columns:repeat(2,minmax(0,1fr)); } .totals { gap:16px; font-size:13px; } }
     </style>
   </head>
   <body>
@@ -363,25 +393,36 @@
       </p>
     </div>
     <div id="game">
-      <h2>Outbreak <span id="g-time" style="float:right"></span></h2>
-      <p id="g-status"></p>
-      <div id="g-split"><i style="background:#3b8cff"></i><i style="background:#ffb020"></i><i style="background:#ff3b30"></i><i style="background:#39e6b0"></i></div>
-      <canvas id="g-chart" width="600" height="120"></canvas>
-      <h3 id="g-spread">Spreader <b id="g-sp">0</b></h3>
-      <div class="tools">
-        <button data-act="seed">Seed here<small>Q · click map · 8</small></button>
-        <button data-act="spread">Spreads faster<small>W · <span data-cost="spread"></span></small></button>
-        <button data-act="reach">Airborne reach<small>E · <span data-cost="reach"></span></small></button>
-        <button data-act="stealth">Evades tests<small>R · <span data-cost="stealth"></span></small></button>
-      </div>
-      <h3 id="g-curb">Curber <b id="g-cp">0</b></h3>
-      <div class="tools">
-        <button data-act="lockdown">Lockdown zone<small>I · click map · 12</small></button>
-        <button data-act="vaccinate">Vaccinate zone<small>O · click map · 15</small></button>
-        <button data-act="masks">Mask mandate<small>P · 18</small></button>
-        <button data-act="test">Test and trace<small>L · <span data-cost="test"></span></small></button>
-      </div>
-      <p id="g-toast"></p>
+      <header class="shared-stats">
+        <h2>Outbreak <span id="g-time"></span></h2>
+        <div class="totals"><span>Infected <b id="g-infected">0</b></span><span>Non-infected <b id="g-noninfected">0</b></span></div>
+        <p id="g-status"></p>
+        <div id="g-split"><i style="background:#50dda5"></i><i style="background:#ff4545"></i></div>
+        <canvas id="g-chart" width="600" height="120" hidden></canvas>
+      </header>
+      <section class="player-panel" data-player="spreader">
+        <div class="player-top"><h3>Spreader</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in spreader">+</button><button data-zoom="1.25" aria-label="Zoom out spreader">-</button><button data-zoom="fit">Whole map</button></div></div>
+        <button data-reveal aria-expanded="false">Show / hide my points &amp; controls</button>
+        <div class="private-controls"><h3>Action points <b id="g-sp">0</b></h3><div class="tools">
+        <button data-act="party">Start a party (10 pax)<small>Q | 10m | click map | <span data-cost></span></small></button>
+        <button data-act="antimask">Antimask conspiracy<small>W | +40% transmission | 5m delay | <span data-cost></span></small></button>
+        <button data-act="antivaxx">Antivaxx conspiracy<small>E | lower uptake | 5m delay | <span data-cost></span></small></button>
+        <button data-act="sickwork">Send someone sick to work<small>R | 15m | click near a case | <span data-cost></span></small></button>
+        </div><p id="g-toast-spreader"></p></div>
+        <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
+      </section>
+      <section class="player-panel" data-player="curber">
+        <div class="player-top"><h3>Curber</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in curber">+</button><button data-zoom="1.25" aria-label="Zoom out curber">-</button><button data-zoom="fit">Whole map</button></div></div>
+        <button data-reveal aria-expanded="false">Show / hide my points &amp; controls</button>
+        <div class="private-controls"><h3>Action points <b id="g-cp">0</b></h3><div class="tools">
+        <button data-act="lockdown">Lockdown<small>I | 30m | click map | <span data-cost></span></small></button>
+        <button data-act="vaccines">Free vaccines<small>O | 2m rollout | 5m protection | <span data-cost></span></small></button>
+        <button data-act="distancing">Social distancing<small>P | -45% transmission | 1m delay | <span data-cost></span></small></button>
+        <button data-act="hospitals">New hospitals<small>L | 10m build | isolate cases | <span data-cost></span></small></button>
+        <button data-act="newvaccine">New vaccine<small>K | 20m research | 90% protection | <span data-cost></span></small></button>
+        </div><p id="g-toast-curber"></p></div>
+        <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
+      </section>
     </div>
     <div id="g-over"><div><h1 id="g-win"></h1><p id="g-sum"></p><button onclick="location.reload()">Play again</button></div></div>
     <div id="plan">

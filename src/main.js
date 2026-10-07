@@ -5,7 +5,8 @@ import { People } from './people.js';
 import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
-import { Outbreak } from './virus.js';
+import { Outbreak, ACTIONS } from './virus.js';
+import { SIDES, gameRect, sideAt, ownsAction, privateOverlays, publicCounts } from './game-view.js';
 import { startTablePlay } from './virus-table.js';
 import * as relay from './room/relay.js';
 
@@ -31,6 +32,9 @@ const people = new People(map.paths, sim, {
   walkers: Math.round(map.paths.edges.length * 0.072),
   cyclists: Math.round(map.paths.edges.length * 0.0105),
 });
+
+// Place indoor agents on their assigned paths too, so both views can display every person.
+if (params.has('game')) for (const p of people.agents) pointAt(people.edges[p.edge], p.s, p);
 
 // ?game turns the table into a two-player outbreak: one player spreads a virus, the other curbs it.
 const game = params.has('game') && params.get('view') !== 'screen' ? new Outbreak(people) : null;
@@ -109,13 +113,40 @@ function updateCameras() {
   screenCam.updateMatrixWorld();
 }
 
+const gameViews = Object.fromEntries(SIDES.map(side => {
+  const cam = tableCam.clone();
+  return [side, { cam, x: WX / 2, z: WZ / 2, zoom: 1, armed: null, toastUntil: 0 }];
+}));
+let activeSide = 'spreader';
+function updateGameCamera(side, fit = false) {
+  const v = gameViews[side];
+  const rect = gameRect(side, innerWidth, innerHeight);
+  const ratio = rect.width / rect.height;
+  const whole = Math.max(WX, WZ * ratio) * 1.04;
+  v.zoom = fit ? whole : Math.max(35, Math.min(whole, v.zoom));
+  const w = v.zoom / 2, h = w / ratio;
+  v.x = v.zoom >= WX ? WX / 2 : Math.max(w, Math.min(WX - w, v.x));
+  v.z = h * 2 >= WZ ? WZ / 2 : Math.max(h, Math.min(WZ - h, v.z));
+  Object.assign(v.cam, { left: -w, right: w, top: h, bottom: -h });
+  v.cam.position.set(v.x, 3000, v.z);
+  v.cam.lookAt(v.x, 0, v.z);
+  v.cam.updateProjectionMatrix();
+  v.cam.updateMatrixWorld();
+}
+function zoomGame(side, factor) {
+  gameViews[side].zoom *= factor;
+  updateGameCamera(side);
+}
+
 function resize() {
   renderer.setSize(innerWidth, innerHeight);
   updateCameras();
+  if (game) for (const side of SIDES) updateGameCamera(side);
 }
 addEventListener('resize', resize);
 zoom = fitZoom();
 resize();
+if (game) for (const side of SIDES) updateGameCamera(side, true);
 
 // ---------- dynamic meshes ----------
 
@@ -147,7 +178,7 @@ function putBox(mesh, k, x, y, z, dx, dz, l, h, w, color) {
 
 const bodies = pool(new THREE.MeshLambertMaterial(), MAX_PARTS); // vehicle bodywork, lit by the sun
 const lamps = pool(new THREE.MeshBasicMaterial(), MAX_LIGHTS); // things that glow: lamps and traffic lights
-const walkers = pool(new THREE.MeshLambertMaterial(), MAX_PEOPLE);
+const walkers = pool(game ? new THREE.MeshBasicMaterial({ depthTest: false }) : new THREE.MeshLambertMaterial(), MAX_PEOPLE, game ? 4 : 0);
 const jamStrips = pool(
   new THREE.MeshBasicMaterial({ color: '#ff8a1f', transparent: true, opacity: 0.5, depthTest: false }),
   MAX_JAMS,
@@ -265,20 +296,38 @@ const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const ndc = new THREE.Vector2();
 const hitPoint = new THREE.Vector3();
 
-function pick(e) {
+function pick(e, side = game ? sideAt(e.clientX, e.clientY, innerWidth, innerHeight) : null) {
+  if (game) {
+    if (!side) return null;
+    const r = gameRect(side, innerWidth, innerHeight);
+    ndc.set(((e.clientX - r.x) / r.width) * 2 - 1, -((e.clientY - r.y) / r.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, gameViews[side].cam);
+    if (!raycaster.ray.intersectPlane(groundPlane, hitPoint)) return null;
+    return { x: hitPoint.x, z: hitPoint.z };
+  }
   ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(ndc, camera());
   if (!raycaster.ray.intersectPlane(groundPlane, hitPoint)) return null;
   return { x: hitPoint.x, z: hitPoint.z };
 }
 
-const mouse = new MouseInput(renderer.domElement, pick, () => Math.max(12, zoom * 0.014));
+const mouse = new MouseInput(renderer.domElement, e => game ? null : pick(e), () => Math.max(12, zoom * 0.014));
 
 // Scroll zooms towards the cursor, or resizes an object if the cursor is on one.
 renderer.domElement.addEventListener(
   'wheel',
   (e) => {
     e.preventDefault();
+    if (game) {
+      const side = sideAt(e.clientX, e.clientY, innerWidth, innerHeight);
+      if (!side) return;
+      activeSide = side;
+      const before = pick(e, side);
+      zoomGame(side, Math.exp(e.deltaY * 0.0015));
+      const after = pick(e, side);
+      if (before && after) { gameViews[side].x += before.x - after.x; gameViews[side].z += before.z - after.z; updateGameCamera(side); }
+      return;
+    }
     const before = pick(e);
     const blob = before && mouse.hit(before);
     if (blob) {
@@ -301,11 +350,24 @@ renderer.domElement.addEventListener(
 let grab = null;
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (e.button !== 2 && !(e.button === 0 && e.shiftKey)) return;
-  grab = pick(e);
+  if (game) {
+    const side = sideAt(e.clientX, e.clientY, innerWidth, innerHeight);
+    if (!side) return;
+    activeSide = side;
+    grab = { ...pick(e, side), side };
+  } else grab = pick(e);
   renderer.domElement.setPointerCapture(e.pointerId);
 });
 renderer.domElement.addEventListener('pointermove', (e) => {
   if (!grab) return;
+  if (game) {
+    const p = pick(e, grab.side);
+    if (!p) return;
+    const v = gameViews[grab.side];
+    v.x += grab.x - p.x; v.z += grab.z - p.z;
+    updateGameCamera(grab.side);
+    return;
+  }
   const p = pick(e);
   if (!p) return;
   focus.x += grab.x - p.x;
@@ -418,6 +480,14 @@ function pushFrame(now) {
 
 addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return; // typing an hour, not a shortcut
+  if (game) {
+    if (e.key === ' ') { e.preventDefault(); paused = !paused; }
+    if (e.key === 'f') document.documentElement.requestFullscreen?.();
+    if (e.key === '0') updateGameCamera(activeSide, true);
+    if (e.key === '+' || e.key === '=') zoomGame(activeSide, 0.8);
+    if (e.key === '-') zoomGame(activeSide, 1.25);
+    return;
+  }
   const step = zoom * 0.08;
   if (e.key >= '1' && e.key <= '4') speed = Number(e.key) - 1;
   if (e.key === ' ') paused = !paused;
@@ -855,23 +925,26 @@ function drawVehicles(dt, time) {
 
 const STATE_COLOUR = [null, color('#ffb020'), color('#ff2d2d'), color('#39e6b0')];
 function infectionColour(p) {
+  if (game) return paint(p.inf === 1 || p.inf === 2 ? '#ff4545' : '#50dda5');
   if (p.iso) return paint('#ffffff');
   return STATE_COLOUR[p.inf] || paint('#6f7a89');
 }
 
-function drawPeople() {
-  const mpp = metresPerPixel();
+function drawPeople(mpp = metresPerPixel()) {
   let n = 0;
   // From far above a person is smaller than a pixel, so skip them.
-  if (mpp < 2.2) {
-    const S = Math.max(1, Math.min(3, mpp * 1.6));
+  if (game || mpp < 2.2) {
+    const S = Math.max(1, game ? mpp * 2.2 : Math.min(3, mpp * 1.6));
     for (const p of people.agents) {
-      if (!p.out || n > MAX_PEOPLE - 4) continue;
+      if ((!game && !p.out) || n > MAX_PEOPLE - 4) continue;
       const side = p.bike ? 0.6 : 0.9; // keep to the right
       const x = p.x - p.dz * side;
       const z = p.z + p.dx * side;
       const c = game ? infectionColour(p) : paint(CLOTHES[p.shade]);
-      if (mpp < 0.12) {
+      if (game) {
+        const size = Math.max(1, mpp * 2.4);
+        putBox(walkers, n++, x, 3, z, 1, 0, size, 1, size, c);
+      } else if (mpp < 0.12) {
         // Close up: legs, a coat and a head; cyclists get a bicycle under them.
         const lift = p.bike ? 0.35 : 0;
         if (p.bike) putBox(walkers, n++, x, 0.5, z, p.dx, p.dz, 1.7, 0.9, 0.12, TROUSERS);
@@ -977,62 +1050,57 @@ function drawSky() {
 
 // ---------- the outbreak game ----------
 
-let armed = null; // 'seed' | 'lockdown' | 'vaccinate': the next click on the map
-let toastUntil = 0;
-const actions = {
-  seed: (p) => game.seed(p.x, p.z),
-  lockdown: (p) => game.lockdown(p.x, p.z),
-  vaccinate: (p) => game.vaccinate(p.x, p.z),
-  spread: () => game.upgrade('spread'),
-  reach: () => game.upgrade('reach'),
-  stealth: () => game.upgrade('stealth'),
-  masks: () => game.masks(),
-  test: () => game.test(),
-};
-const NEED_CLICK = new Set(['seed', 'lockdown', 'vaccinate']);
-const GAME_KEYS = { q: 'seed', w: 'spread', e: 'reach', r: 'stealth', i: 'lockdown', o: 'vaccinate', p: 'masks', l: 'test' };
-
-function toast(text) {
-  el('g-toast').textContent = text;
-  toastUntil = performance.now() + 3000;
+function toast(side, text) {
+  el(`g-toast-${side}`).textContent = text;
+  gameViews[side].toastUntil = performance.now() + 4000;
 }
-
-function doAction(name, p) {
+function doAction(side, name, p) {
   if (!game || game.phase === 'over') return;
-  if (NEED_CLICK.has(name) && !p) {
-    armed = armed === name ? null : name;
-    toast(armed ? `Click the map to ${name === 'seed' ? 'seed the virus' : name === 'lockdown' ? 'lock down' : 'vaccinate'}.` : '');
+  if (name === 'seed' ? side !== 'spreader' : !ownsAction(side, name, ACTIONS)) return;
+  const v = gameViews[side];
+  if (['seed', 'party', 'sickwork', 'lockdown'].includes(name) && !p) {
+    v.armed = v.armed === name ? null : name;
+    toast(side, v.armed ? `Click your map: ${ACTIONS[name]?.label || 'place patient zero'}.` : '');
     return;
   }
-  const ok = actions[name](p);
-  if (!ok) toast(game.phase === 'setup' ? 'Spreader: click a busy street to place patient zero.' : 'Not enough points, or nobody there.');
-  else armed = null;
+  const ok = name === 'seed' ? game.seed(p.x, p.z) : game.act(name, p?.x, p?.z);
+  if (!ok) toast(side, 'Unavailable: check points/cooldown. Parties need 10 nearby people; sick work needs an infectious person.');
+  else { v.armed = null; toast(side, 'Action scheduled.'); }
 }
-
+const GAME_KEYS = { q: 'party', w: 'antimask', e: 'antivaxx', r: 'sickwork', i: 'lockdown', o: 'vaccines', p: 'distancing', l: 'hospitals', k: 'newvaccine' };
 if (game) {
-  for (const b of document.querySelectorAll('#game [data-act]')) b.addEventListener('click', () => doAction(b.dataset.act));
-  renderer.domElement.addEventListener(
-    'pointerdown',
-    (e) => {
-      if (e.button !== 0 || e.shiftKey || (!armed && game.phase !== 'setup')) return;
-      e.stopImmediatePropagation();
-      const p = pick(e);
-      if (!p) return;
-      if (game.phase === 'setup') doAction('seed', p);
-      else {
-        const name = armed;
-        armed = null;
-        doAction(name, p);
+  for (const panel of document.querySelectorAll('[data-player]')) {
+    const side = panel.dataset.player;
+    panel.addEventListener('pointerdown', () => { activeSide = side; });
+    for (const b of panel.querySelectorAll('[data-act]')) b.addEventListener('click', () => { doAction(side, b.dataset.act); panel.classList.remove('revealed'); panel.querySelector('[data-reveal]').setAttribute('aria-expanded', 'false'); });
+    for (const b of panel.querySelectorAll('[data-zoom]')) b.addEventListener('click', () => b.dataset.zoom === 'fit' ? updateGameCamera(side, true) : zoomGame(side, Number(b.dataset.zoom)));
+    const reveal = panel.querySelector('[data-reveal]');
+    reveal.addEventListener('click', () => {
+      const open = !panel.classList.contains('revealed');
+      for (const other of document.querySelectorAll('[data-player]')) {
+        other.classList.remove('revealed');
+        other.querySelector('[data-reveal]').setAttribute('aria-expanded', 'false');
       }
-    },
-    { capture: true },
-  );
-  addEventListener('keydown', (e) => {
-    if (e.target instanceof HTMLInputElement) return;
-    if (GAME_KEYS[e.key]) doAction(GAME_KEYS[e.key]);
-    if (e.key === 'Escape') armed = null;
+      panel.classList.toggle('revealed', open);
+      reveal.setAttribute('aria-expanded', String(open));
+    });
+  }
+  renderer.domElement.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || e.shiftKey) return;
+    e.stopImmediatePropagation();
+    const side = sideAt(e.clientX, e.clientY, innerWidth, innerHeight);
+    if (!side) return;
+    activeSide = side;
+    const p = pick(e, side);
+    if (!p) return;
+    if (game.phase === 'setup' && side === 'spreader') doAction(side, 'seed', p);
+    else if (gameViews[side].armed) doAction(side, gameViews[side].armed, p);
+  }, { capture: true });
+  addEventListener('keydown', e => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement) return;
+    if (GAME_KEYS[e.key]) doAction(activeSide, GAME_KEYS[e.key]);
+    if (e.key === 'Escape') { gameViews[activeSide].armed = null; toast(activeSide, ''); }
   });
-  // The first seed is free; until it is placed, the city just runs.
 }
 
 const pct = (x) => `${Math.round(x * 1000) / 10}%`;
@@ -1042,34 +1110,35 @@ function updateGame() {
   const c = game.counts();
   const total = game.total;
   const bars = el('g-split').children;
-  [c.s, c.e, c.i, c.r].forEach((n, k) => (bars[k].style.width = `${(n / total) * 100}%`));
+  [c.s + c.r, c.e + c.i].forEach((n, k) => (bars[k].style.width = `${(n / total) * 100}%`));
   const left = Math.max(0, ROUND - roundTime);
   el('g-time').textContent = game.phase === 'setup' ? '3:00' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
   if (game.phase === 'running' && left <= 0) game.phase = 'over';
-  const R_ = game.history.length > 3 ? growth() : null;
+  const shared = publicCounts(c);
+  el('g-infected').textContent = shared.infected;
+  el('g-noninfected').textContent = shared.noninfected;
   el('g-status').textContent =
     game.phase === 'setup'
       ? 'Spreader: click a busy street to place patient zero. Curber: get ready.'
-      : `${pct(c.share)} of the city has caught it. ${c.active} active${c.iso ? `, ${c.iso} isolating` : ''}.${R_ ? ` ${R_}` : ''}`;
+      : `${Math.floor(game.time / 60)} simulated minutes | Red: infected | Green: non-infected (including recovered)`;
   el('g-sp').textContent = Math.floor(game.points.spreader);
   el('g-cp').textContent = Math.floor(game.points.curber);
   for (const b of document.querySelectorAll('#game [data-act]')) {
     const a = b.dataset.act;
-    const side = ['seed', 'spread', 'reach', 'stealth'].includes(a) ? 'spreader' : 'curber';
-    const cost = a === 'seed' ? 8 : a === 'lockdown' ? 12 : a === 'vaccinate' ? 15 : a === 'masks' ? 18 : a === 'test' ? 14 + 6 * game.testing : 12 + 6 * game.level[a];
-    const maxed = (a === 'test' && game.testing >= 3) || (game.level[a] >= 4);
+    const action = ACTIONS[a];
+    const remaining = Math.max(0, (game.ready[a] || 0) - game.time);
+    const effect = game.effects.find(e => e.kind === a && e.until > game.time);
     const cs = b.querySelector('[data-cost]');
-    if (cs) cs.textContent = maxed ? 'max' : cost;
-    b.disabled = game.phase !== 'running' || maxed || game.points[side] < cost;
-    b.classList.toggle('on', armed === a);
+    if (cs) cs.textContent = effect && effect.start > game.time ? `starts in ${Math.ceil((effect.start - game.time) / 60)}m` : remaining === Infinity ? 'built' : remaining > 0 ? `${Math.ceil(remaining / 60)}m cooldown` : `${action.cost} pts`;
+    b.disabled = !game.available(a);
+    b.classList.toggle('on', gameViews[action.side].armed === a);
   }
-  if (performance.now() > toastUntil) el('g-toast').textContent = '';
+  for (const side of SIDES) if (performance.now() > gameViews[side].toastUntil) el(`g-toast-${side}`).textContent = '';
   drawChart();
   drawHeat();
   if (game.phase === 'over' && !el('g-over').classList.contains('show')) {
     el('g-win').textContent = "Time's up";
-    const peak = game.history.reduce((a, h) => (h[1] > a[1] ? h : a), [0, 0]);
-    el('g-sum').textContent = `In ${Math.round(game.time / 60)} simulated minutes ${pct(c.share)} of the city caught it. Cases peaked at ${peak[1]} after ${Math.round(peak[0] / 60)} minutes. Vaccinated or recovered: ${c.r}.`;
+    el('g-sum').textContent = `After ${Math.round(game.time / 60)} simulated minutes: ${shared.infected} infected, ${shared.noninfected} non-infected. ${pct(c.share)} caught it during the round.`;
     el('g-over').classList.add('show');
     paused = true;
   }
@@ -1140,9 +1209,8 @@ const tablePlay = params.has('game')
       pool,
       putBox,
       act: doAction,
-      armed: () => armed,
-      fromTable,
-      tall: Number(params.get('tall')) || undefined,
+      armed: (side) => gameViews[side].armed,
+      pick,
     })
   : null;
 
@@ -1184,7 +1252,7 @@ function advance(simSeconds) {
   // With a planning tool chosen, objects from the camera apply the tool instead of closing streets.
   const planning = tool !== 'object' && tool !== 'road' && !follower;
   if (planning) objectsUseTool(external);
-  const zones = game ? game.lockdowns : [];
+  const zones = game ? game.lockdowns.filter(z => (z.start || 0) <= game.time && z.until > game.time) : [];
   // Played on the table, objects are the game's pieces: they act through the game, not by closing the street under them.
   const blobs = mouse.blobs.concat(zones, follower ? remote : planning || tablePlay?.pieces ? [] : external.map(fromTable));
   sim.setBlobs(blobs);
@@ -1208,7 +1276,25 @@ function draw(dt, blobs) {
   drawPlan();
   drawRoute(sim.time);
   drawOverlays(blobs, sim.time);
-  renderer.render(scene, camera());
+  if (game) {
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, innerWidth, innerHeight);
+    renderer.clear();
+    renderer.setScissorTest(true);
+    heatCells.visible = false;
+    routeDots.visible = false;
+    for (const side of SIDES) {
+      const r = gameRect(side, innerWidth, innerHeight);
+      const y = innerHeight - r.y - r.height;
+      renderer.setViewport(r.x, y, r.width, r.height);
+      renderer.setScissor(r.x, y, r.width, r.height);
+      closedStrips.visible = side === 'curber';
+      drawOverlays(privateOverlays(game, side), sim.time);
+      drawPeople(gameViews[side].zoom / r.width);
+      renderer.render(scene, gameViews[side].cam);
+    }
+    renderer.setScissorTest(false);
+  } else renderer.render(scene, camera());
 }
 
 let last = performance.now();

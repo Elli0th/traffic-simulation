@@ -14,7 +14,7 @@ map. The first version, a small invented grid city, is still at `/grid.html`.
 
 ## Two modes
 
-The switch at the bottom left of the table window, or `M`, changes between them. The screens follow
+The switch at the bottom left of the table window (top right during the game), or `M`, changes between them. The screens follow
 the table.
 
 | Mode | Address | What it is |
@@ -22,7 +22,7 @@ the table.
 | Traffic demo | `/` | The city and its traffic: put an object on a street and it closes |
 | Outbreak game | `/?game=table` | The two-player game on top of the same traffic, with every way of playing switched on: pieces and hands on the table, and the mouse and keyboard |
 
-`/?game` is the game with the mouse-and-keyboard panel only.
+`/?game` is the game with the mouse and keyboard only.
 
 ## Controls
 
@@ -42,34 +42,56 @@ the table.
 
 ## Outbreak game (two players)
 
-Open http://localhost:5173/?game for a Plague Inc-style game on the same map. The Spreader seeds a
-virus and upgrades it; the Curber locks down zones, vaccinates, masks up and tests. People catch it
-from infectious people near them while they are outdoors. Red is infectious, amber exposed, teal
-recovered or vaccinated, white isolating. Glowing squares show where it is when people are too small
-to see. There is no winner: a round runs 3 minutes (30× speed) and ends with a summary of how far it spread.
+Open http://localhost:5173/?game. Two side-by-side cameras show the same city and outbreak.
+Spreader is on the left, Curber on the right. Each has independent + / - / Whole map buttons,
+scroll zoom and right-drag pan. Actions target only their owner's map; selecting an action on one
+side never arms the other side. The top bar spans both sides and shows current infected (exposed
+plus infectious) and non-infected (susceptible plus recovered) totals. All people use red/green dots,
+including people currently indoors. Isolation and vaccination status are not revealed by dot colour.
+Only the Spreader sees party markers; only the Curber sees lockdown rings/closures. No opponent
+action announcements are shown. Points, action buttons and cooldowns sit in covered panels; click
+Show / hide to open your panel, which closes when you choose an action. Only one panel opens at a time.
+A shared screen still lets someone physically look across; this is visual separation, not secure device privacy.
+Click a busy street to place four initial exposed people for free.
+The round runs three real minutes; at 30? that is 90 simulated minutes. All action timings below
+use simulated time. This is an accelerated fictional game model, not a prediction for any disease.
 
-| Key | Spreader | Key | Curber |
+| Player / key | Action | Delay | Effect / duration |
 | --- | --- | --- | --- |
-| `Q` then click | Seed the virus (first one is free) | `I` then click | Lockdown zone (also closes streets) |
-| `W` `E` `R` | Spreads faster, airborne reach, evades tests | `O` then click | Vaccinate zone |
-| | | `P` `L` | Mask mandate, test and trace |
+| Spreader Q + click | Start a party (10 pax) | Immediate | Ten nearest people within 300m; extra group contacts for 10m |
+| Spreader W | Antimask conspiracy | 5m | Contact transmission ?1.4 for 30m |
+| Spreader E | Antivaxx conspiracy | 5m | Vaccine acceptance falls from 85% to 25% for 40m |
+| Spreader R + click | Send someone sick to work | Immediate | Nearest infectious person within 300m stays outside and evades isolation for 15m; lockdown still applies |
+| Curber I + click | Lockdown | 1m | 220m zone keeps 90% of people home for 30m and cancels party contacts there |
+| Curber O | Free vaccines | 2m | Citywide rollout for 30m; each unvaccinated person has an 85% / 600 per-second uptake chance (25% / 600 during antivaxx) |
+| Curber P | Social distancing | 1m | Ordinary transmission ?0.55 and party transmission ?0.45 for 30m |
+| Curber L | New hospitals | 10m | Permanent 0.3% per-second chance of isolating each infectious person |
+| Curber K | New vaccine | 20m | Permanent improvement from 65% to 90% susceptibility reduction for vaccinated people |
+
+Vaccination protects after another 5m and does not cure existing infections. Vaccinated people can
+still catch and transmit infection. A party adds a hazard of 0.004 per infectious attendee per second
+(about 21% risk over one minute with one infectious attendee, before protection/distancing).
+Ordinary close contact uses a hazard of 0.1 per second within 18m. These intentionally accelerated
+rates depend on the actual crowd, movement and interventions; they are not fixed citywide infection rates.
+Incubation averages 90 seconds; infectious duration averages 30m, both with ?30% variation.
+Recovered people are immune for the round. Hospitals represent isolation capacity, not deaths or treatment outcomes.
+Action costs, delays, durations and cooldowns are in `ACTIONS` in `src/virus.js`.
 
 **On the table, with the room's sensors.** Open the table with `/?game=table` and the screens with
-`/?game&view=screen`. The rules and prices are the same; only the way of playing changes. The two
-players sit on opposite long sides, each with their cards along their edge of the picture.
+`/?game&view=screen`. The rules, the two maps and the panels are the same; hands and objects press
+the buttons and click the maps. The players sit side by side, the Spreader at the left half.
 
 | What the sensors see | What it does |
 | --- | --- |
-| Something flat on the map (a puck, a coaster) | Spreader: seeds the virus there |
-| Something tall on the map (a cup) | Curber: locks that zone down, or vaccinates it if the Vaccinate card was pressed first |
-| A hand or object held on a card for a second | Buys that card. After a round, starts the next |
+| A hand or object held on a button for a second | Presses it: Show / hide, an action, + and -, Play again |
+| An object put down on your own map | Plays there. The Spreader's first one places patient zero. After that it is the action chosen on the panel, or a party (Spreader) or a lockdown (Curber) if none is chosen |
 
-The depth camera tells the two players' pieces apart by height: 60 mm and up is the Curber's
-(`?tall=80` moves the line). A piece counts once it has stood still for a second, so an arm reaching
-over the map does nothing, and a piece that cannot be afforded yet is played as soon as it can be.
-Objects seen by the lidar have no height and count as cups. Dragging and zooming the map with the
-hands is switched off, since the pieces have to stay where they were put. To rehearse without the
-room, use the camera page's pretend table: click for a cup, Shift-click for something flat.
+Whose piece it is follows from which half of the table it stands on. A piece counts once it has
+stood still for a second, so an arm reaching over the map does nothing; one that cannot be played
+yet (points, cooldown) is played as soon as it can be; lift it and put it down to play again.
+Dragging and zooming the map with the lidar is switched off. The screens show the shared totals and
+where the virus is, not either player's private panel. To rehearse without the room, use the camera
+page's pretend table.
 
 ## Planning a change
 
