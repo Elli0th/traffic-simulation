@@ -99,6 +99,21 @@
         "--strictPort"
       ],
       "port": 5233
+    },
+    {
+      "name": "game-next",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        ".claude/worktrees/game-room-api-next",
+        "--",
+        "--port",
+        "5243",
+        "--strictPort"
+      ],
+      "port": 5243
     }
   ]
 }
