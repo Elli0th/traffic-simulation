@@ -73,6 +73,7 @@ if (game) {
   streamer = new FrameStreamer({
     url: params.get('stream_url') || 'ws://192.168.42.21/frames',
     enabled: shouldStream,
+    useWorker: params.get('stream_worker') !== 'false', // ?stream_worker=false encodes on the main thread instead
   });
   streamer.start();
 }
@@ -1889,9 +1890,12 @@ function draw(dt, blobs) {
 
 let last = performance.now();
 const targetGap = game ? 1000 / 30 : 0; // 30 FPS cap during outbreak game mode to protect Raspberry Pi GPU
+let frameCount = 0; // frames actually rendered, to check the real frame rate
 function frame(now) {
   requestAnimationFrame(frame);
-  if (targetGap > 0 && now - last < targetGap) return;
+  // A frame that arrives a hair early still counts, or the cap would quietly become 20 FPS on a 60 Hz screen.
+  if (targetGap > 0 && now - last < targetGap - 2) return;
+  frameCount++;
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (view === 'screen') {
@@ -1926,6 +1930,7 @@ else requestAnimationFrame(frame);
 
 window.table = {
   game,
+  get frames() { return frameCount; },
   get playerViews() {
     return Object.fromEntries(SIDES.map(side => [side, { x: gameViews[side].x, z: gameViews[side].z, zoom: gameViews[side].zoom }]));
   },
