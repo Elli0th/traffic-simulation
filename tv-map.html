@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Outbreak · Live 3D TV</title>
+<style>
+*{box-sizing:border-box}body{margin:0;overflow:hidden;background:#070b12;color:#eaf0f7;font-family:system-ui,sans-serif}canvas{display:block}header{position:fixed;z-index:2;inset:0 0 auto;padding:24px 32px;display:flex;align-items:center;justify-content:space-between;gap:20px;background:linear-gradient(#070b12ee,#070b1200);pointer-events:none}h1{margin:0;font-size:30px}small{display:block;color:#a9bacb;font-size:15px;margin-top:7px}#timer{font-size:52px;font-weight:800;font-variant-numeric:tabular-nums}#connection{position:fixed;z-index:2;bottom:24px;left:32px;padding:12px 18px;border:1px solid #344253;background:#101720dd;border-radius:10px;color:#99b2c8;font-size:17px}#counts{font-size:20px;color:#ffb75b}#waiting{position:fixed;inset:0;display:grid;place-items:center;text-align:center;font-size:24px;z-index:1;background:#070b12cc}#waiting[hidden]{display:none}#orbit{position:fixed;z-index:3;bottom:24px;right:32px;text-align:right}button{font:700 18px system-ui;color:#eaf0f7;background:#18293eee;border:1px solid #7292b4;border-radius:12px;padding:16px 24px;margin-left:8px;cursor:pointer}#orbit small{margin-bottom:12px}
+</style>
+</head>
+<body><header><div><h1 id="title">Live 3D outbreak</h1><small id="role">Waiting for the game broadcast</small></div><div id="counts"></div><div id="timer">--:--</div></header><div id="waiting">Open a solo game on the main screen.<br>The city, people and trenches will appear here live.</div><div id="connection">Waiting for broadcast…</div><div id="orbit"><small>Drag to orbit · Scroll or pinch to zoom</small><button id="spin">Pause spin</button><button id="recenter">Recenter map</button></div><script type="module" src="/src/tv-map.js"></script></body>
+</html>

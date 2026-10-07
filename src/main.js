@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TrenchEffects } from './trench-effects.js';
 import { Sim, LANE_WIDTH } from './sim.js';
 import { Trams, Ferries, inTunnel } from './transit.js';
 import { People } from './people.js';
@@ -6,13 +7,16 @@ import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
 import { Outbreak, ACTIONS, DAY } from './virus.js';
-import { CurberAI } from './curber-ai.js';
-import { SIDES, gameRect, sideAt, ownsAction, privateOverlays, publicCounts, setSinglePlayer, activeSides, actionState, nearestPlace, ownedEvents } from './game-view.js';
-import { stepOutbreakWorld, GAME_STEP } from './game-runtime.js';
+import { SpreaderAI } from './spreader-ai.js';
+import { CurberAI, SOLO_CURBER_AI } from './curber-ai.js';
+import { SIDES, gameRect, soloLayout, sideAt, ownsAction, privateOverlays, publicCounts, setSinglePlayer, activeSides, actionState, nearestPlace, ownedEvents } from './game-view.js';
+import { stepOutbreakWorld, GAME_STEP, roundDuration } from './game-runtime.js';
 import { startTablePlay } from './virus-table.js';
 import * as relay from './room/relay.js';
 import { VirusLighting } from './room/hue-lights.js';
 import { buildDashboardPayload } from './room/dashboard-data.js';
+import { soloTvRoute } from './room/tv-display.js';
+import { gameSceneState } from './room/game-broadcast.js';
 import { LidarTouchController } from './room/lidar-touch.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
@@ -49,6 +53,7 @@ if (params.has('game')) for (const p of people.agents) pointAt(people.edges[p.ed
 
 // ?game turns the table into a two-player outbreak: one player spreads a virus, the other curbs it.
 const game = gameMode ? new Outbreak(people, { sim, trams }) : null;
+let soloRole = null;
 let ai = null; // the computer's Curber, in the one-player game
 const lighting = gameMode ? new VirusLighting() : null;
 const actionHistory = [];
@@ -91,6 +96,7 @@ const cityGround = buildGround(map);
 const cityBuildings = buildBuildings(map);
 if (game) cityBuildings.material = new THREE.MeshBasicMaterial({ color: '#555e6b' });
 scene.add(cityGround, cityBuildings);
+const trenchEffects = game ? new TrenchEffects(scene, map, cityGround, cityBuildings) : null;
 if (!game) scene.add(buildTrees(map), buildStops(map));
 const labels = buildLabels(map);
 scene.add(...labels);
@@ -165,6 +171,10 @@ function zoomGame(side, factor) {
 }
 
 function resize() {
+  if (soloRole) {
+    const layout = soloLayout(innerWidth, innerHeight);
+    for (const key of ['left','right','bottom']) document.body.style.setProperty(`--solo-${key}`, `${layout[key]}px`);
+  }
   renderer.setSize(innerWidth, innerHeight);
   updateCameras();
   if (game) for (const side of activeSides()) updateGameCamera(side);
@@ -508,7 +518,7 @@ addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return; // typing an hour, not a shortcut
   if (game && e.target instanceof HTMLButtonElement && (e.key === ' ' || e.key === 'Enter')) return;
   if (game) {
-    if (e.key === ' ') { e.preventDefault(); paused = !paused; }
+    if (e.key === ' ' && game.phase !== 'over' && !el('g-menu').classList.contains('show')) { e.preventDefault(); paused = !paused; if (soloRole) updateGame(); }
     if (e.key === 'f') document.documentElement.requestFullscreen?.();
     if (e.key === '0') updateGameCamera(activeSide, true);
     if (e.key === '+' || e.key === '=') zoomGame(activeSide, 0.8);
@@ -963,7 +973,7 @@ function drawPeople(mpp = metresPerPixel()) {
   if (game || mpp < 2.2) {
     const S = Math.max(1, game ? mpp * 2.2 : Math.min(3, mpp * 1.6));
     for (const p of people.agents) {
-      if ((!game && !p.out) || n > MAX_PEOPLE - 4) continue;
+      if ((!game && !p.out) || n > MAX_PEOPLE - 4 || (game?.barriers.length && game.inTrench(p))) continue;
       const side = p.bike ? 0.6 : 0.9; // keep to the right
       const x = p.x - p.dz * side;
       const z = p.z + p.dx * side;
@@ -1083,13 +1093,14 @@ function toast(side, text) {
   gameViews[side].toastUntil = performance.now() + 4000;
 }
 function doAction(side, name, p) {
-  if (!game || game.phase === 'over') return;
-  if (ai && side === 'curber') return; // the computer plays that side
+  if (!game || game.phase === 'over' || (soloRole && paused)) return;
+  if (soloRole && side !== soloRole) return; // the computer plays that side
   if (name === 'seed' ? side !== 'spreader' : !ownsAction(side, name, ACTIONS)) return;
   const v = gameViews[side];
-  if (['seed', 'party', 'sickwork', 'lockdown'].includes(name) && !p) {
+  if (['seed', 'party', 'sickwork', 'lockdown', 'festival', 'relocate', 'barrier', 'clinic', 'tracing'].includes(name) && !p) {
+    if (name !== 'seed' && !game.available(name)) { toast(side, 'This action is locked, cooling down, or needs more points.'); return; }
     v.armed = v.armed === name ? null : name;
-    toast(side, v.armed ? `Click your map: ${ACTIONS[name]?.label || 'place patient zero'}. Escape cancels.` : 'Selection cancelled.');
+    toast(side, v.armed ? `${name === 'barrier' ? 'Drag across your map' : 'Click your map'}: ${ACTIONS[name]?.label || 'place patient zero'}. Escape cancels.` : 'Selection cancelled.');
     updateGame();
     return;
   }
@@ -1100,8 +1111,8 @@ function doAction(side, name, p) {
     v.selected = p ? { ...p, kind: name, at: game.time } : null;
     const event = name === 'seed' ? null : game.actionLog.at(-1);
     if (event) event.place = p ? nearestPlace(map.labels, p.x, p.z) : 'Citywide';
-    const delay = ACTIONS[name]?.delay || 0;
-    toast(side, `${ACTIONS[name]?.label || 'Patient zero'} placed${p ? ` - ${nearestPlace(map.labels, p.x, p.z)}` : ''}. ${delay ? `Starts in ${Math.ceil(delay / 60)} simulated minutes.` : 'Active now.'}`);
+    const delay = game.action(name)?.delay || 0;
+    toast(side, `${ACTIONS[name]?.label || 'Patient zero'} placed${p ? ` - ${nearestPlace(map.labels, p.x, p.z)}` : ''}. ${delay ? (soloRole ? `Starts in ${Math.ceil(delay / 30)} seconds.` : `Starts in ${Math.ceil(delay / 60)} simulated minutes.`) : 'Active now.'}`);
     const actRecord = {
       side,
       name,
@@ -1110,7 +1121,7 @@ function doAction(side, name, p) {
       z: p?.z,
       gameTime: game.time,
       realTime: Date.now(),
-      duration: ACTIONS[name]?.duration || 0,
+      duration: game.action(name)?.duration || 0,
     };
     actionHistory.push(actRecord);
     relay.send('action', actRecord);
@@ -1159,6 +1170,7 @@ if (game) {
       reveal.setAttribute('aria-expanded', String(open));
     });
   }
+  let stroke = null;
   renderer.domElement.addEventListener('pointerdown', e => {
     if (e.button !== 0 || e.shiftKey) return;
     e.stopImmediatePropagation();
@@ -1167,14 +1179,40 @@ if (game) {
     activeSide = side;
     const p = pick(e, side);
     if (!p) return;
+    if (!paused && soloRole === 'curber' && side === 'curber' && gameViews.curber.armed === 'barrier' && game.available('barrier')) {
+      stroke = { id: e.pointerId, points: [p], length: 0 };
+      game.barrierPreview = stroke.points;
+      renderer.domElement.setPointerCapture(e.pointerId);
+      return;
+    }
     if (game.phase === 'setup' && side === 'spreader') doAction(side, 'seed', p);
-    else if (gameViews[side].armed) doAction(side, gameViews[side].armed, p);
+    else if (gameViews[side].armed && gameViews[side].armed !== 'barrier') doAction(side, gameViews[side].armed, p);
   }, { capture: true });
   addEventListener('keydown', e => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement) return;
     if (GAME_KEYS[e.key]) doAction(activeSide, GAME_KEYS[e.key]);
     if (e.key === 'Escape') { gameViews[activeSide].armed = null; toast(activeSide, 'Selection cancelled.'); updateGame(); }
   });
+
+  renderer.domElement.style.touchAction = 'none';
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (paused || !stroke || stroke.id !== e.pointerId) return;
+    const p = pick(e, 'curber'), last = stroke.points.at(-1);
+    if (!p || sideAt(e.clientX, e.clientY, innerWidth, innerHeight) !== 'curber') return;
+    const distance = Math.hypot(p.x-last.x,p.z-last.z);
+    if (distance < 20 || stroke.length + distance > 1800 || stroke.points.length >= 100) return;
+    stroke.length += distance; stroke.points.push(p);
+  });
+  const finishStroke = e => {
+    if (!stroke || stroke.id !== e.pointerId) return;
+    if (!paused && e.type === 'pointerup' && stroke.length >= 40 && game.addBarrier(stroke.points)) {
+      gameViews.curber.armed = null;
+      trenchEffects.commit(game.barriers.at(-1), game.time);
+      toast('curber', 'Seismic trench detonated! The shattered ground stays destroyed for the round. Infection cannot cross it.');
+    }
+    stroke = null; game.barrierPreview = null; updateGame();
+  };
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) renderer.domElement.addEventListener(type, finishStroke);
 
   // Visual touch ripple canvas for projected table
   const touchCanvas = document.createElement('canvas');
@@ -1229,7 +1267,7 @@ if (game) {
 }
 
 const markerPoint = new THREE.Vector3();
-const SHORT_ACTION = { seed: 'Patient zero', party: 'Party: 10 people', sickwork: 'Sick worker', lockdown: 'Lockdown' };
+const SHORT_ACTION = { seed: 'Patient zero', clinic: 'Vaccine clinic', tracing: 'Test & isolate', festival: 'Festival', relocate: 'Patient zero relocation', barrier: 'Seismic trench', party: 'Party: 10 people', sickwork: 'Sick worker', lockdown: 'Lockdown' };
 function screenPoint(side, x, z) {
   const r = gameRect(side, innerWidth, innerHeight);
   markerPoint.set(x, 0, z).project(gameViews[side].cam);
@@ -1258,10 +1296,10 @@ function updateActionList(side) {
     const state = actionState(e, game.time);
     const remaining = state.seconds === Infinity ? 'rest of round' : `${Math.ceil(state.seconds / 60)}m`;
     row.dataset.state = state.label.toLowerCase();
-    row.children[0].textContent = `${Number.isFinite(e.x) ? '#' + e.id + ' ' : ''}${ACTIONS[e.kind].label}`;
+    row.children[0].textContent = `${Number.isFinite(e.x) ? '#' + e.id + ' ' : ''}${e.kind === 'party' ? `Party (${e.members?.length || 10} pax)` : ACTIONS[e.kind].label}`;
     row.children[1].textContent = state.label === 'Finished' ? 'Finished' : `${state.label} - ${remaining}`;
     let detail = e.place || 'Citywide';
-    if (e.members) detail += ` | ${e.members.filter(p => p.inf === 1 || p.inf === 2).length}/10 currently infected`;
+    if (e.members) detail += ` | ${e.members.filter(p => p.inf === 1 || p.inf === 2).length}/${e.members.length} currently infected`;
     if (e.kind === 'vaccines') detail += ` | ${game.agents.filter(p => p.vac).length} vaccinated citywide`;
     if (e.kind === 'hospitals' && state.label === 'Active') detail += ` | ${game.counts().iso} currently isolating`;
     if (e.kind === 'distancing') detail += ' | contact rate -45%';
@@ -1340,39 +1378,121 @@ function tell(time, text) {
   el('g-feed-list').innerHTML = feed.map((f, k) => `<li class="${k === 0 ? 'fresh' : ''}"><i>Day ${f.day}</i>${f.text}</li>`).join('');
 }
 
-function startGame(players) {
+const POWER_ART = {
+  relocate: ['↗', 'Move an infected person to a new district.'],
+  festival: ['♫', 'Bring up to 100 people together for a concert.'],
+  blackout: ['ϟ', 'Disrupt hospitals and boost transmission.'],
+  mutation: ['✦', 'Double transmission for a powerful surge.'],
+  barrier: ['✹', 'Drag, then release to detonate a cluster blast. Shatter buildings into a permanent black trench.'],
+};
+function mountPowerCards(role) {
+  el('g-power-title').textContent = role === 'spreader' ? 'Outbreak powers' : 'Seismic power';
+  el('g-power-help').textContent = role === 'spreader' ? 'Grow the outbreak to unlock your next ability.' : 'Unlock at 25% protected or 20 seconds into the round. Then select the card and draw on the map.';
+  for (const b of document.querySelectorAll(`[data-player="${role}"] [data-act]`)) {
+    const art = POWER_ART[b.dataset.act];
+    if (!art) continue;
+    const name = b.firstChild.textContent, small = b.querySelector('small');
+    b.replaceChildren(); b.classList.add('power-card');
+    const status = document.createElement('span'); status.className = 'power-status'; status.textContent = 'LOCKED';
+    const icon = document.createElement('span'); icon.className = 'power-icon'; icon.textContent = art[0]; icon.setAttribute('aria-hidden','true');
+    const title = document.createElement('strong'); title.textContent = name;
+    const description = document.createElement('span'); description.className = 'power-description'; description.textContent = art[1];
+    const meter = document.createElement('span'); meter.className = 'power-meter'; meter.append(document.createElement('i'));
+    b.append(status, icon, title, description, small, meter);
+    el('g-powers').append(b);
+  }
+}
+
+function startGame(players, role = 'spreader') {
   if (players === 1) {
     document.body.classList.add('one-player');
-    setSinglePlayer(true);
+    soloRole = role; game.configureSolo(role); activeSide = role;
+    document.body.dataset.role = role;
+    setSinglePlayer(true, role);
+    for (const b of document.querySelectorAll('#game [data-act]')) {
+      const a = game.action(b.dataset.act), small = b.querySelector('small');
+      const local = ['party', 'festival', 'relocate', 'sickwork', 'lockdown', 'clinic', 'tracing'].includes(b.dataset.act);
+      const target = b.dataset.act === 'barrier' ? 'Drag map' : local ? 'Click map' : 'Citywide';
+      small.replaceChildren(document.createTextNode(`${target} | ${a.delay ? Math.ceil(a.delay / 30) + 's delay | ' : ''}`));
+      const cost = document.createElement('span'); cost.dataset.cost = ''; small.append(cost);
+      b.title = `${a.label}: ${a.cost} points; ${a.cooldown === Infinity ? 'once per round' : Math.ceil(a.cooldown / 30) + ' seconds cooldown'}`;
+    }
+    document.querySelectorAll('[data-player]').forEach(p => p.classList.toggle('solo-active', p.dataset.player === role));
+    document.querySelectorAll('[data-map]').forEach(p => p.classList.toggle('solo-active', p.dataset.map === role));
+    document.querySelector(`[data-player="${role}"]`).classList.add('revealed');
     ai = new CurberAI(game, {
+      tuning: SOLO_CURBER_AI,
       onNotice: (time) => tell(time, 'Health officials have noticed the outbreak and are preparing a response.'),
       onAct: (kind, at, time) => tell(time, `The computer ${FEED[kind]}.`),
     });
+    if (role === 'curber') {
+      ai = new SpreaderAI(game, (kind, at, time) => tell(time, kind === 'imports' ? 'New imported cases appeared in unprotected districts.' : `The computer used ${game.action(kind).label}.`));
+      ai.start();
+      tell(0, 'An outbreak has begun. Keep the percentage who ever catch it as low as possible.');
+    }
+    mountPowerCards(role);
     resize();
-    updateGameCamera('spreader', true);
+    updateGameCamera(role, true);
+    // Frame the middle of the city more closely; Whole map still restores the full extent.
+    gameViews[role].zoom *= 0.88;
+    gameViews[role].x = WX / 2; gameViews[role].z = WZ / 2;
+    updateGameCamera(role);
   }
   el('g-menu').classList.remove('show');
 }
 if (game) {
   const chosen = params.get('players');
-  if (chosen === '1' || chosen === '2') startGame(Number(chosen));
+  if (chosen === '1' || chosen === '2') startGame(Number(chosen), params.get('role') === 'curber' ? 'curber' : 'spreader');
   else {
     el('g-menu').classList.add('show');
-    for (const b of document.querySelectorAll('#g-menu [data-players]')) b.addEventListener('click', () => startGame(Number(b.dataset.players)));
+    for (const b of document.querySelectorAll('#g-menu [data-players]')) b.addEventListener('click', () => startGame(Number(b.dataset.players), b.dataset.role || 'spreader'));
   }
 }
 
 const num = (n) => n.toLocaleString('en-GB');
 const pct = (x) => `${Math.round(x * 1000) / 10}%`;
-const ROUND = 180; // real seconds a round runs once the virus is seeded
+const ROUND = () => roundDuration(!!soloRole); // real seconds a round runs once the virus is seeded
 let roundTime = 0;
+const broadcastStartedAt = Date.now();
+let dashboardSequence=0;
+const broadcastSession = globalThis.crypto?.randomUUID?.() || `${broadcastStartedAt}-${Math.random().toString(36).slice(2)}`;
+let broadcastSequence = 0, sceneSentAt = -Infinity;
+function broadcastScene(now, force = false) {
+  if (follower || !game || (!force && now-sceneSentAt<100)) return;
+  sceneSentAt=now;
+  relay.send('game_scene', gameSceneState(game, {session:broadcastSession,startedAt:broadcastStartedAt,
+    sequence:++broadcastSequence,roundTime,paused,selectionPending:el('g-menu').classList.contains('show'),map:mapName||'central',view:gameViews[soloRole||'spreader']}));
+}
+relay.on('scene_request', () => broadcastScene(performance.now(),true));
+if (game) {
+  el('g-pause').addEventListener('click', () => {
+    if (!soloRole || game.phase === 'over') return;
+    paused = !paused;
+    for (const side of SIDES) gameViews[side].armed = null;
+    game.barrierPreview = null;
+    updateGame();
+  });
+  el('g-resume').addEventListener('click', () => el('g-pause').click());
+  for (const b of document.querySelectorAll('[data-quit-solo]')) b.addEventListener('click', () => {
+    const next = new URL(location.href); next.searchParams.delete('players'); next.searchParams.delete('role');
+    location.href = next.pathname + next.search;
+  });
+}
 function updateGame() {
   const c = game.counts();
+  document.body.classList.toggle('solo-paused', !!soloRole && paused && game.phase !== 'over');
+  el('g-pause').textContent = paused ? 'Resume' : 'Pause';
+  el('g-pause').setAttribute('aria-pressed', String(paused));
+  el('g-pause').disabled = game.phase === 'over';
   const total = game.total;
+  if (soloRole) {
+    el('g-score').textContent = `${soloRole === 'spreader' ? 'Infected' : 'Never infected'}: ${pct(soloRole === 'spreader' ? c.share : 1 - c.share)}`;
+    el('g-progress').textContent = soloRole === 'spreader' ? `Momentum: ${pct(c.share)} · powers at 8 / 20 / 30 / 40%${game.time >= 1800 ? ' · spread accelerated' : ''}` : (game.unlocked('barrier') ? 'Seismic trench ready · select the card, drag, then release to detonate' : `Barrier: ${pct(game.protectedShare())} / 25% protected · ${Math.max(0, Math.ceil((600-game.time)/30))}s to unlock`);
+  }
   const bars = el('g-split').children;
   [c.s + c.r, c.e + c.i].forEach((n, k) => (bars[k].style.width = `${(n / total) * 100}%`));
-  const left = Math.max(0, ROUND - roundTime);
-  el('g-time').textContent = game.phase === 'setup' ? '3:00' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+  const left = Math.max(0, ROUND() - roundTime);
+  el('g-time').textContent = el('g-menu').classList.contains('show') ? '--:--' : game.phase === 'setup' ? (soloRole ? '2:00' : '3:00') : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
   if (game.phase === 'running' && left <= 0) game.finish();
   const R_ = game.history.length > 3 ? growth() : null;
   const shared = publicCounts(c);
@@ -1381,17 +1501,28 @@ function updateGame() {
   el('g-status').textContent =
     game.phase === 'setup'
       ? 'Spreader: click a busy street to place patient zero. Curber: get ready.'
-      : `Day ${Math.min(60, Math.floor(game.time / DAY) + 1)} of 60. ${num(c.people.ever)} of ${num(game.population)} people have caught it (${pct(c.share)}); ${num(c.people.active)} infected now, ${num(c.people.hospital)} needing a hospital bed, an estimated ${num(c.people.dead)} deaths.${c.iso ? ` ${num(Math.round(c.iso * game.scale))} isolating.` : ''}${R_ ? ` ${R_}` : ''}`;
+      : `Day ${Math.min(soloRole ? 40 : 60, Math.floor(game.time / DAY) + 1)} of ${soloRole ? 40 : 60}. ${num(c.people.ever)} of ${num(game.population)} people have caught it (${pct(c.share)}); ${num(c.people.active)} infected now, ${num(c.people.hospital)} needing a hospital bed, an estimated ${num(c.people.dead)} deaths.${c.iso ? ` ${num(Math.round(c.iso * game.scale))} isolating.` : ''}${R_ ? ` ${R_}` : ''}`;
   el('g-sp').textContent = Math.floor(game.points.spreader);
   el('g-cp').textContent = Math.floor(game.points.curber);
   for (const b of document.querySelectorAll('#game [data-act]')) {
     const a = b.dataset.act;
-    const action = ACTIONS[a];
+    const action = game.action(a);
+    if (soloRole && a === 'party') b.firstChild.textContent = action.label;
+    b.hidden = !!action.solo && !soloRole;
     const remaining = Math.max(0, (game.ready[a] || 0) - game.time);
     const effect = game.effects.find(e => e.kind === a && e.until > game.time);
     const cs = b.querySelector('[data-cost]');
-    if (cs) cs.textContent = effect && effect.start > game.time ? `starts in ${Math.ceil((effect.start - game.time) / 60)}m` : remaining === Infinity ? 'built' : remaining > 0 ? `${Math.ceil(remaining / 60)}m cooldown` : `${action.cost} pts`;
-    b.disabled = !game.available(a);
+    const unlocked = game.unlocked(a);
+    if (cs) cs.textContent = !unlocked && a === 'barrier' ? `25% protected or ${Math.max(0, Math.ceil((600-game.time)/30))}s` : !unlocked ? `Unlock at ${Math.round(action.unlock * 100)}% ${action.side === 'spreader' ? 'infected' : 'protected'}` : effect && effect.start > game.time ? `starts in ${soloRole ? Math.ceil((effect.start - game.time) / 30) + 's' : Math.ceil((effect.start - game.time) / 60) + 'm'}` : remaining === Infinity ? 'built' : remaining > 0 ? `${soloRole ? Math.ceil(remaining / 30) + 's' : Math.ceil(remaining / 60) + 'm'} cooldown` : `${action.cost} pts`;
+    b.disabled = !game.available(a) || (soloRole && paused);
+    if (b.classList.contains('power-card')) {
+      const state = !unlocked ? 'locked' : gameViews[action.side].armed === a ? 'armed' : remaining > 0 ? 'cooldown' : game.available(a) ? 'ready' : 'charging';
+      const wasLocked = b.dataset.powerState === 'locked';
+      b.dataset.powerState = state;
+      b.querySelector('.power-status').textContent = state === 'armed' ? (a === 'barrier' ? 'DRAW ON THE MAP' : 'CHOOSE A LOCATION') : state === 'ready' ? 'READY TO USE' : state === 'charging' ? 'EARN MORE POINTS' : state.toUpperCase();
+      b.querySelector('.power-meter i').style.width = `${(unlocked ? remaining > 0 && remaining !== Infinity ? Math.max(0, 1 - remaining / action.cooldown) : 1 : game.powerProgress(a)) * 100}%`;
+      if (wasLocked && unlocked && game.phase === 'running') toast(action.side, `${action.label} unlocked! Select its power card to use it.`);
+    }
     b.classList.toggle('on', gameViews[action.side].armed === a);
   }
   for (const side of SIDES) if (performance.now() > gameViews[side].toastUntil && !gameViews[side].armed) { el(`g-toast-${side}`).textContent = ''; el(`g-feedback-${side}`).textContent = ''; }
@@ -1403,18 +1534,18 @@ function updateGame() {
     const selected = gameViews[side].selected;
     const kind = selected?.kind === 'seed' ? 'party' : selected?.kind;
     const repeat = panel.querySelector('[data-repeat]');
-    repeat.disabled = !kind || !game.available(kind);
+    repeat.disabled = paused || !kind || !game.available(kind);
     repeat.querySelector('small').textContent = selected ? `${SHORT_ACTION[kind] || kind} - ${nearestPlace(map.labels, selected.x, selected.z)}` : 'Choose a map location first';
   }
   // Update dynamic Hue lighting based on virus spread
   lighting?.update(game);
 
   // Broadcast tactical payload to TV dashboards
-  const dashPayload = buildDashboardPayload(game, actionHistory, roundTime);
-  if (dashPayload) relay.send('game_sync', dashPayload);
+  const dashPayload = buildDashboardPayload(game, actionHistory, roundTime, {paused,selectionPending:el('g-menu').classList.contains('show')});
+  if (!follower && dashPayload) relay.send('game_sync', {...dashPayload,session:broadcastSession,startedAt:broadcastStartedAt,sequence:++dashboardSequence});
 
   if (game.phase === 'over' && !el('g-over').classList.contains('show')) {
-    el('g-win').textContent = "Time's up";
+    el('g-win').textContent = soloRole ? `${soloRole === 'spreader' ? 'Population infected' : 'Population never infected'}: ${pct(soloRole === 'spreader' ? c.share : 1 - c.share)}` : "Time's up";
     const peak = game.history.reduce((a, h) => (h[1] > a[1] ? h : a), [0, 0]);
     el('g-sum').textContent = `In ${Math.round(game.time / DAY)} days ${num(c.people.ever)} of ${num(game.population)} people (${pct(c.share)}) caught the virus. Cases peaked at ${num(Math.round(peak[1] * game.scale))} on day ${Math.round(peak[0] / DAY)}. An estimated ${num(c.people.dead)} died, and ${num(c.people.immune)} are immune.`;
     el('g-over').classList.add('show');
@@ -1463,6 +1594,10 @@ function drawChart() {
 }
 
 // Where the virus is, as glowing squares: readable even when people are too small to see.
+function drawBarrierPixels(side) {
+  trenchEffects.draw(game, soloRole === 'curber' && side === 'curber');
+}
+
 function drawHeat() {
   const cells = game.heat(100);
   let n = 0;
@@ -1486,12 +1621,13 @@ const mapCacheMaterial = new THREE.MeshBasicMaterial({ depthTest: false, depthWr
 mapCacheScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mapCacheMaterial));
 function cachedMap(side, r) {
   const v = gameViews[side];
-  const key = `${r.width}/${r.height}/${v.x}/${v.z}/${v.zoom}`;
+  const key = `${r.width}/${r.height}/${v.x}/${v.z}/${v.zoom}/${trenchEffects?.version || 0}`;
   if (v.cacheKey === key) return v.mapCache.texture;
   if (!v.mapCache) v.mapCache = new THREE.WebGLRenderTarget(r.width, r.height, { depthBuffer: true });
   else v.mapCache.setSize(r.width, r.height);
+  trenchEffects?.setVisible(false);
   cityGround.visible = true; cityBuildings.visible = true;
-  for (const label of labels) label.visible = true;
+  for (const label of labels) label.visible = !(game?.barriers.length && game.inTrench(label.position));
   walkers.visible = false;
   renderer.setScissorTest(false);
   renderer.setRenderTarget(v.mapCache);
@@ -1543,6 +1679,10 @@ if (follower) {
   // A screen has no switch of its own: it goes where the table goes.
   el('modes').remove();
   let gameSeen = performance.now();
+  relay.on('game_sync', state => {
+    const next=soloTvRoute(state,{page:'legacy',tv:params.get('tv')});
+    if(next) location.replace(new URL(next,location.href));
+  });
   relay.on('virus', () => {
     gameSeen = performance.now();
     if (mode !== 'game') location.href = modeUrl('game');
@@ -1605,6 +1745,7 @@ function draw(dt, blobs) {
       // One screen shows everything: the Spreader's parties and the computer's lockdowns and closed streets.
       closedStrips.visible = side === 'curber' || ai !== null;
       drawOverlays(ai ? privateOverlays(game, 'spreader').concat(privateOverlays(game, 'curber')) : privateOverlays(game, side), sim.time);
+      drawBarrierPixels(side);
       drawPeople(gameViews[side].zoom / r.width);
       renderer.render(scene, gameViews[side].cam);
     }
@@ -1613,7 +1754,10 @@ function draw(dt, blobs) {
     renderer.setScissor(0, 0, innerWidth, innerHeight);
     renderer.setScissorTest(false);
     mapCacheMaterial.map = gameFrameTarget.texture;
+    const impact = soloRole === 'curber' ? trenchEffects.impact(game.time) : {x:0,z:0};
+    mapCacheCamera.position.set(impact.x * 2 / innerWidth, impact.z * 2 / innerHeight, 1);
     renderer.render(mapCacheScene, mapCacheCamera);
+    mapCacheCamera.position.set(0,0,1);
   } else renderer.render(scene, camera());
 }
 
@@ -1626,8 +1770,8 @@ function frame(now) {
     updateCameras();
   }
   if (game?.phase === 'running' && !paused) {
-    roundTime = Math.min(ROUND, roundTime + dt);
-    if (roundTime === ROUND) { game.finish(); updateGame(); }
+    roundTime = Math.min(ROUND(), roundTime + dt);
+    if (roundTime === ROUND()) { game.finish(); updateGame(); }
   }
   tablePlay?.update(dt, external);
   const blobs = advance(paused ? 0 : dt * SPEEDS[speed]);
@@ -1637,6 +1781,7 @@ function frame(now) {
     lidarTouch.drawRipples(touchCtx);
   }
   tellScreens(blobs, now);
+  broadcastScene(now);
   pushFrame(now);
   requestAnimationFrame(frame);
 }

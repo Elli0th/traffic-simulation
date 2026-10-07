@@ -7,6 +7,8 @@
 import { mulberry32 } from './geometry.js';
 import { DAY } from './virus.js';
 
+export const SOLO_CURBER_AI = { notice: 0.025, reaction: 900, pace: [720, 1080] };
+
 export const AI = {
   notice: 0.012, // share of the city that must have caught it before the computer takes it seriously
   reaction: 7 * DAY, // then it waits this long (a week of game days) before the first move

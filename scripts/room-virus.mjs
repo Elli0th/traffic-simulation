@@ -6,6 +6,7 @@
 //
 // Usage:
 //   node scripts/room-virus.mjs show
+//   PORT=5174 node scripts/room-virus.mjs show --solo  # TV 1: 3D broadcast; TV 2: auto-role dashboard
 //   node scripts/room-virus.mjs idle
 //   node scripts/room-virus.mjs status
 
@@ -55,13 +56,14 @@ async function postJson(url, body) {
 
 async function showAll() {
   const tableUrl = `http://${LOCAL_IP}:${PORT}/?game`;
-  const tv1Url = `http://${LOCAL_IP}:${PORT}/dashboard.html?side=spreader`;
-  const tv2Url = `http://${LOCAL_IP}:${PORT}/dashboard.html?side=curber`;
+  const solo = process.argv.includes('--solo');
+  const tv1Url = solo ? `http://${LOCAL_IP}:${PORT}/tv-map.html?tv=1` : `http://${LOCAL_IP}:${PORT}/dashboard.html?side=spreader`;
+  const tv2Url = `http://${LOCAL_IP}:${PORT}/dashboard.html?side=${solo?'auto':'curber'}&tv=2`;
 
   console.log(`Setting up Outbreak Room Installation:`);
   console.log(`  Projector -> ${tableUrl}`);
-  console.log(`  TV 1 (Spreader) -> ${tv1Url}`);
-  console.log(`  TV 2 (Curber)   -> ${tv2Url}`);
+  console.log(`  TV 1 (${solo?'Live 3D broadcast':'Spreader'}) -> ${tv1Url}`);
+  console.log(`  TV 2 (${solo?'Solo dashboard':'Curber'}) -> ${tv2Url}`);
 
   const [pRes, t1Res, t2Res] = await Promise.all([
     postJson(`${HOSTS.projector}/show`, { url: tableUrl }),
