@@ -16,6 +16,7 @@ import { VirusLighting } from './room/hue-lights.js';
 import { buildDashboardPayload } from './room/dashboard-data.js';
 import { LidarTouchController } from './room/lidar-touch.js';
 import { TouchMarks } from './room/touch-marks.js';
+import { drawCalibration } from './room/calibration-view.js';
 import { FrameStreamer } from './room/frame-streamer.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
@@ -535,63 +536,6 @@ if (!follower) relay.send('hello', { aspect: aspect() });
 // fills while it is held, and a word when too much is in view. The same in the traffic view and in
 // the game, which is dimmed underneath. Afterwards, for a few seconds, how well the check came out.
 let calibrationVerdict = null; // { error, good, until }
-function drawCalibration(ctx, now) {
-  const W = innerWidth;
-  const H = innerHeight;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
-  ctx.fillRect(0, 0, W, H);
-  ctx.textAlign = 'center';
-  const big = `600 ${Math.round(W * 0.02)}px ui-sans-serif, system-ui, sans-serif`;
-  const small = `500 ${Math.round(W * 0.014)}px ui-sans-serif, system-ui, sans-serif`;
-  if (!calibrating) {
-    if (now > calibrationVerdict.until) return void (calibrationVerdict = null);
-    ctx.font = big;
-    ctx.fillStyle = calibrationVerdict.good ? '#39e6b0' : '#ffb020';
-    ctx.fillText(calibrationVerdict.good ? 'Calibrated' : 'Calibrated, but not well: do it again', W / 2, H / 2);
-    ctx.font = small;
-    ctx.fillStyle = '#e9ecef';
-    ctx.fillText(`The nine points agree to within ${calibrationVerdict.error.toFixed(1)}% of the picture.`, W / 2, H / 2 + W * 0.03);
-    return;
-  }
-  const cx = calibrating.x * W;
-  const cy = calibrating.y * H;
-  const r = W * (0.02 + 0.002 * Math.sin(now / 180));
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 4;
-  ctx.stroke();
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.arc(cx, cy, r * 0.15, 0, Math.PI * 2);
-  ctx.fill();
-  // The ring that fills while the finger is held still.
-  const progress = Math.max(0, Math.min(1, calibrating.progress || 0));
-  if (progress > 0) {
-    ctx.strokeStyle = '#39e6b0';
-    ctx.lineWidth = 8;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 1.5, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-    ctx.stroke();
-  }
-  // The words keep clear of the circle: between the rows of circles, above or below the middle.
-  const ty = H * (calibrating.y > 0.6 ? 0.3 : 0.7);
-  ctx.font = big;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(`Calibrating ${calibrating.index + 1} of ${calibrating.of || 9}: hold one finger still on the circle`, W / 2, ty);
-  if (calibrating.seen > 1) {
-    ctx.font = small;
-    ctx.fillStyle = '#ffb020';
-    ctx.fillText(`I can see ${calibrating.seen} things. Take everything else off the table.`, W / 2, ty + W * 0.03);
-  } else if (calibrating.seen === 0) {
-    ctx.font = small;
-    ctx.fillStyle = '#8a94a3';
-    ctx.fillText('Touch the table with a fingertip, in the middle of the circle.', W / 2, ty + W * 0.03);
-  }
-}
 
 // Circles that show what the lidar page has registered (see touch-marks.js). The game makes its own
 // canvas for this further down; the traffic view gets one here.
@@ -1818,7 +1762,8 @@ function frame(now) {
   if (touchCtx) {
     touchCtx.clearRect(0, 0, innerWidth, innerHeight);
     if (calibrating || calibrationVerdict) {
-      drawCalibration(touchCtx, now);
+      if (!calibrating && now > calibrationVerdict.until) calibrationVerdict = null;
+      else drawCalibration(touchCtx, innerWidth, innerHeight, now, calibrating, calibrationVerdict);
     } else {
       lidarTouch?.drawRipples(touchCtx);
       // What the lidar page registers: in the traffic view, and in the game until its own touch has a calibration.

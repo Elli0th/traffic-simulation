@@ -6,11 +6,14 @@
 //   npm run room show            table on the projector, 3D view on both TVs
 //   npm run room show game       the two-player outbreak game
 //   npm run room show draw       light painting instead of the city
+//   npm run room show check      the test card on the projector only: calibration circles, rings for
+//                                what the lidar registers, crosses to try the calibration against
 //   npm run room status          what each display is showing
 //   npm run room idle            hand the displays back
 //
 // ROOM=sim talks to the virtual room (Docker) instead. PAGE=http://address:port overrides the address
-// the displays load from, which is otherwise this laptop on the room network, port 5173. PROJECTOR,
+// the displays load from, which is otherwise this laptop on the room network, on the port the dev
+// server is found on (5203 for npm run live, else 5173). PROJECTOR,
 // TV1 and TV2 override a display's address, for example when a port of the virtual room is taken.
 
 import os from 'node:os';
@@ -108,6 +111,17 @@ async function boot() {
   for (const name of Object.keys(DISPLAYS)) await call(name, '/status');
 }
 
+// The port the dev server is answering on: the live one (npm run live), else the ordinary one.
+async function serverPort() {
+  if (process.env.PORT) return Number(process.env.PORT);
+  for (const port of [5203, 5173]) {
+    try {
+      if ((await fetch(`http://localhost:${port}/lidar.html`, { signal: AbortSignal.timeout(1500) })).ok) return port;
+    } catch {}
+  }
+  return 5173;
+}
+
 // The outbreak game: the table on the projector, and each player's own dashboard on a TV, the
 // Spreader's on the left one and the Curber's on the right (the same layout as scripts/room-virus.mjs).
 async function showGame(base) {
@@ -120,8 +134,11 @@ const [action = 'status', what = ''] = process.argv.slice(2);
 if (action === 'boot') {
   await boot();
 } else if (action === 'show') {
-  const base = process.env.PAGE ?? `http://${laptop()}:5173`;
-  if (what === 'game') {
+  const base = process.env.PAGE ?? `http://${laptop()}:${await serverPort()}`;
+  if (what === 'check') {
+    // Only the projector: the test card is for the table, and the TVs are left as they are.
+    await call('projector', '/show', { url: `${base}/check.html` });
+  } else if (what === 'game') {
     // The outbreak game keeps its panels: the players press them with hands and pieces.
     await showGame(base);
   } else {
@@ -136,5 +153,5 @@ if (action === 'boot') {
 } else if (action === 'status') {
   for (const name of Object.keys(DISPLAYS)) await call(name, '/status');
 } else {
-  console.log('Usage: npm run room [boot | show [game | draw | map=west] | status | idle | blank]');
+  console.log('Usage: npm run room [boot | show [check | game | draw | map=west] | status | idle | blank]');
 }

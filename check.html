@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tangible Table · Check</title>
+    <script>
+      // Tells the dev server what goes wrong on this page (see /client-log): a display has no console to read.
+      (() => {
+        const tell = (text) => { try { fetch('/client-log', { method: 'POST', body: `${location.pathname}${location.search} ${text}` }).catch(() => {}); } catch {} };
+        window.pageLog = tell;
+        addEventListener('error', (e) => tell(`error: ${e.message} at ${(e.filename || '').split('/').pop()}:${e.lineno}`));
+        addEventListener('unhandledrejection', (e) => tell(`error: ${e.reason?.message || e.reason}`));
+        tell(`opened, ${innerWidth}x${innerHeight}`);
+      })();
+    </script>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #000;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="table"></canvas>
+    <script type="module" src="/src/room/check.js"></script>
+  </body>
+</html>

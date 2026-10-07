@@ -82,6 +82,6 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    rollupOptions: { input: ['index.html', 'camera.html', 'lidar.html', 'grid.html', 'draw.html', 'dashboard.html', 'stream.html'] },
+    rollupOptions: { input: ['index.html', 'camera.html', 'lidar.html', 'grid.html', 'draw.html', 'dashboard.html', 'stream.html', 'check.html'] },
   },
 }));
