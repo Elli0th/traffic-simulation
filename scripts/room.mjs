@@ -7,7 +7,8 @@
 //   npm run room idle            hand the displays back
 //
 // ROOM=sim talks to the virtual room (Docker) instead. PAGE=http://address:port overrides the address
-// the displays load from, which is otherwise this laptop on the room network, port 5173.
+// the displays load from, which is otherwise this laptop on the room network, port 5173. PROJECTOR,
+// TV1 and TV2 override a display's address, for example when a port of the virtual room is taken.
 
 import os from 'node:os';
 
@@ -15,6 +16,9 @@ const sim = process.env.ROOM === 'sim';
 const DISPLAYS = sim
   ? { projector: 'http://localhost:8021', 'tv-1': 'http://localhost:8022', 'tv-2': 'http://localhost:8023' }
   : { projector: 'http://192.168.42.21', 'tv-1': 'http://192.168.42.22', 'tv-2': 'http://192.168.42.23' };
+
+const given = { projector: process.env.PROJECTOR, 'tv-1': process.env.TV1, 'tv-2': process.env.TV2 };
+for (const name of Object.keys(given)) if (given[name]) DISPLAYS[name] = given[name];
 
 function laptop() {
   if (sim) return 'host.docker.internal';
@@ -46,8 +50,9 @@ const [action = 'status', what = ''] = process.argv.slice(2);
 if (action === 'show') {
   const page = (process.env.PAGE ?? `http://${laptop()}:5173`) + (what === 'draw' ? '/draw.html' : '/');
   const query = what && what !== 'draw' ? [what] : []; // for example map=west
-  await call('projector', '/show', { url: page + (query.length ? `?${query.join('&')}` : '') });
-  for (const tv of ['tv-1', 'tv-2']) await call(tv, '/show', { url: `${page}?${['view=screen', ...query].join('&')}` });
+  // The displays have no keyboard, so the panels start hidden.
+  await call('projector', '/show', { url: `${page}?${['nohud', ...query].join('&')}` });
+  for (const tv of ['tv-1', 'tv-2']) await call(tv, '/show', { url: `${page}?${['view=screen', 'nohud', ...query].join('&')}` });
 } else if (action === 'idle' || action === 'blank') {
   for (const name of Object.keys(DISPLAYS)) await call(name, '/show', { [action]: true });
 } else if (action === 'status') {

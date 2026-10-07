@@ -18,6 +18,8 @@ const MAX_DOTS = 1200;
 
 // ?map=west loads the larger map that reaches Älvsborgsbron; without it, the city centre.
 const params = new URLSearchParams(location.search);
+// ?nohud starts with the panels hidden, for a display with no keyboard to press H on.
+if (params.has('nohud')) document.body.classList.add('nohud');
 const mapName = params.get('map');
 const map = await (await fetch(mapName && mapName !== 'central' ? `/gbg-${mapName}.json` : '/gbg.json')).json();
 const [WX, WZ] = map.size;
