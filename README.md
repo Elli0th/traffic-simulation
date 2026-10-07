@@ -309,3 +309,27 @@ a rush-hour trip rate in `scripts/maps.mjs`.
 - There is no airport inside the map. Landvetter is 20 km east; the hospital helipads are drawn.
 
 Map data © OpenStreetMap contributors.
+
+## Role-based single player
+
+Open `/?game` and choose **Solo · Spreader** or **Solo · Government**, using the same map, action panels and colours as multiplayer. Direct links are `/?game&players=1&role=spreader` and `/?game&players=1&role=curber`.
+
+Spreader scores the percentage who ever caught the virus. Patient-zero relocation unlocks at 8%, festival/concert (up to 100 attendees) at 20%, blackout (+50% transmission and interrupted hospital detection) at 30%, and mutation (double transmission) at 40%. After the first real minute, transmission accelerates with infection milestones and Spreader parties grow from 20 to 40 attendees. The solo computer government reacts later so players can build momentum. Actions cost points and have cooldowns; repeated patient-zero seeding is disabled in solo play. Relocation chooses an existing infected person and places them on a path near the destination.
+
+Government faces an automatic outbreak and a computer Spreader. Score is the percentage who never caught it. Vaccination and recovered immunity count toward a separate protection milestone: at 25% protected or after 20 real seconds, the seismic trench unlocks permanently. Select it, then drag a finger or mouse across the map. Release to spend 14 points and detonate a cluster blast and create a trench for the rest of the round, with a 10-real-second cooldown. A stroke is capped at 1.8 km. Terrain and buildings are cut out of the rendered city along the stroke, and exploding pixel shards and shockwaves leave a black trench. It blocks pedestrian, party, car-arrival and transit exposure across it and pedestrian movement across its width. Cancelled or very short strokes cost nothing.
+
+Solo actions use reduced costs, faster point regeneration and shorter delays. Party cooldown is 2.5 real seconds; lockdown and tracing are 3 seconds; clinics are 4 seconds; citywide vaccines and distancing are 10 seconds. Government starts with scattered infectious cases, and the bot acts every 3 seconds and announces limited imported-case waves every 15 seconds in unprotected areas. Mobile clinics immediately vaccinate susceptible people nearby; testing isolates exposed and infectious people nearby.
+
+Solo rounds last **2 minutes**, while multiplayer remains 3 minutes. Special abilities appear as cards beside the map, with unlock progress, cooldown meters and ready states.
+
+Use **Pause** (or Space) to freeze the round timer, outbreak and cooldowns. **Resume** continues, and **Quit game** returns to the role menu. Changes to solo balancing do not change multiplayer costs or cooldowns.
+
+On desktop, solo controls use larger action buttons in a left rail, power cards sit on the right, and the centered map fills the height below the header. Smaller windows keep a scrollable bottom control panel. The initial map framing is closer; Whole map restores the complete city. Trench detonations now have fireballs, double shockwaves, dense debris, dust and a brief shake, with reduced-motion preferences respected.
+
+## Solo TV displays
+
+Keep the main solo game open. TV 1 opens `/tv-map.html` for the live 3D city; TV 2 opens `/dashboard.html?side=auto` for the current solo role's dashboard. Both use the main game's two-minute timer and pause/end state. The 3D TV receives the exact people, infections, camera target, parties, lockdowns and permanent trenches, including new trench explosions; it does not simulate a second outbreak. Late-opening TVs receive the current snapshot, and duplicate/out-of-order frames are ignored.
+
+The existing BroadcastChannel connects windows in the same browser. The Vite WebSocket relay forwards the same snapshots between machines, so physical TVs must open the URLs using the serving computer's LAN address and the same port. Keep `npm run dev` running. To set the room displays from the existing installation script, use `PORT=5174 node scripts/room-virus.mjs show --solo` (replace 5174 with the actual dev-server port). The projector opens the game menu, TV 1 opens the 3D broadcast and TV 2 follows whichever solo role is selected. The command without `--solo` retains the multiplayer display arrangement.
+
+Solo TV updates: refresh the main game and both TV pages on the same server host and port. TV 1 uses `tv-map.html?tv=1`; TV 2 uses `dashboard.html?side=auto&tv=2`. Existing spreader TV dashboards automatically switch to the 3D view during solo rounds. The 3D view has automatic rotation, drag-to-orbit, pinch/scroll zoom and a recenter button. Both timers follow the main game’s two-minute solo clock and pause state; disconnected pages wait for broadcast rather than showing a three-minute placeholder. Multiplayer remains three minutes.

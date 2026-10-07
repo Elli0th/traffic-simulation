@@ -446,6 +446,79 @@
       body.one-player #game .player-panel[data-player="spreader"] { width:var(--control-width); border-right:1px solid #33404e; }
       body.one-player #game [data-map="spreader"] { width:calc(100% - var(--control-width) - 280px); }
       body.one-player [data-map="curber"] { display:none; }
+    body.one-player #game [data-player] { display:none; }
+      body.one-player #game [data-player].solo-active { display:block; width:100%; left:0; right:auto; }
+      body.one-player #game [data-map] { display:none; }
+      body.one-player #game [data-map].solo-active { display:block; left:0; width:calc(100% - min(340px, 30vw)); }
+      body.one-player #g-feed { width:min(340px, 30vw); }
+      body.one-player [data-player].solo-active .private-controls { display:grid !important; }
+      body.one-player [data-player].solo-active [data-reveal] { display:none !important; }
+      body.one-player #g-score { color:#ffb020; font-weight:700; }
+      #g-progress { font-size:12px; }
+      body:not(.one-player) #g-score, body:not(.one-player) #g-progress { display:none; }
+      body.one-player .tools { max-height:180px; overflow:auto; }
+    .solo-session { display:none; float:right; }
+      body.one-player .solo-session { display:inline-flex; gap:8px; }
+      .solo-session button, #g-paused button { padding:8px 14px; background:#263341; color:#fff; border:1px solid #526171; border-radius:6px; cursor:pointer; }
+      #g-paused { display:none; position:fixed; inset:112px 0 320px; z-index:40; background:#101720dd; align-items:center; justify-content:center; text-align:center; }
+      body.solo-paused #g-paused { display:flex; }
+    #g-feed .power-heading { margin-bottom:14px; }
+      .power-heading > span { color:#a6b4c6; font-size:10px; font-weight:800; letter-spacing:2px; }
+      #g-feed .power-heading h3 { color:#fff; font-size:24px; margin:3px 0; }
+      #g-power-help { font-size:12px; color:#a6b4c6; margin:4px 0; }
+      #g-powers { display:grid; gap:10px; margin-bottom:22px; }
+      #game #g-powers .power-card { --accent:#ffad55; position:relative; display:grid; grid-template-columns:38px minmax(0,1fr); gap:3px 10px; width:100%; padding:13px; text-align:left; border:1px solid #705037; border-radius:12px; background:linear-gradient(130deg,#38251b,#17202d); color:#fff; overflow:hidden; transition:transform .15s,border-color .2s,box-shadow .2s; }
+      body[data-role="curber"] #game #g-powers .power-card { --accent:#50dda5; background:linear-gradient(130deg,#18372e,#17202d); border-color:#39775f; }
+      #g-powers .power-icon { grid-column:1; grid-row:2 / 5; width:36px; height:36px; display:grid; place-items:center; border-radius:10px; background:#ffffff0e; color:var(--accent); font-size:25px; }
+      #g-powers strong { grid-column:2; font-size:14px; line-height:1.3; }
+      #g-powers .power-description { grid-column:2; font-size:11px; line-height:1.4; color:#bbc8d5; }
+      #g-powers small { grid-column:2; font-size:10px; color:var(--accent); }
+      #g-powers .power-meter { grid-column:1 / -1; height:4px; border-radius:4px; background:#ffffff15; overflow:hidden; margin-top:7px; }
+      #g-powers .power-meter i { display:block; height:100%; background:var(--accent); width:0; transition:width .25s; }
+      #game #g-powers .power-card:disabled { opacity:.75; cursor:default; }
+      #game #g-powers .power-card[data-power-state="ready"] { border-color:var(--accent); box-shadow:0 0 18px #ffad5522,inset 0 0 18px #ffad5508; }
+      #game #g-powers .power-card[data-power-state="ready"]:hover { transform:translateY(-2px); box-shadow:0 0 22px #ffffff25; }
+      #game #g-powers .power-card.on { outline:2px solid var(--accent); box-shadow:0 0 24px #ffffff25; }
+      #g-powers .power-status { grid-column:1 / -1; color:var(--accent); font-size:9px; font-weight:800; letter-spacing:1.4px; }
+      #g-feed > h4 { padding-top:14px; border-top:1px solid #33404e; }
+      @media(prefers-reduced-motion:reduce) { #g-powers * { transition:none !important; } }
+    body[data-role="curber"] #game #g-powers .power-card[data-act="barrier"] { --accent:#ffb75b; border-color:#bd743a; background:linear-gradient(135deg,#4a2d1c,#17202d); }
+    /* Solo: a tall central map, large actions on the left, and powers on the right. */
+      body.one-player #game .player-panel.solo-active { top:112px; bottom:0; left:0; right:auto; width:var(--solo-left,274px); height:auto; padding:16px 12px; overflow:auto; border-right:1px solid #33404e; border-top:0; }
+      body.one-player #game .private-controls { grid-template-columns:1fr; height:auto; gap:18px; }
+      body.one-player #game .action-controls, body.one-player #game .action-history { overflow:visible; padding:0; }
+      body.one-player #game .action-history { max-height:180px; overflow:auto; }
+      body.one-player #game .player-top { flex-wrap:wrap; margin-bottom:16px; }
+      body.one-player #game .player-top h3 { font-size:22px; }
+      body.one-player #game .zoom-tools { width:100%; }
+      body.one-player #game .zoom-tools button { min-height:48px; min-width:48px; font-size:18px; }
+      body.one-player #game .zoom-tools button[data-zoom="fit"] { flex:1; font-size:14px; }
+      body.one-player #game .tools { grid-template-columns:1fr; max-height:none; overflow:visible; gap:10px; }
+      body.one-player #game .tools button { min-height:68px; padding:12px 14px; border-radius:10px; font-size:16px; line-height:1.3; }
+      body.one-player #game .tools small { font-size:12px; margin-top:6px; }
+      body.one-player #game .interactive-tools { grid-template-columns:1fr; gap:8px; }
+      body.one-player #game .interactive-tools button { min-height:60px; padding:12px; font-size:15px; }
+      body.one-player #game .interactive-tools small { font-size:11px; }
+      body.one-player #game [data-map].solo-active { left:var(--solo-left,274px); top:112px; bottom:var(--solo-bottom,0px); width:calc(100% - var(--solo-left,274px) - var(--solo-right,316px)); }
+      body.one-player #g-feed { top:112px; bottom:var(--solo-bottom,0px); width:var(--solo-right,316px); padding:18px 14px; }
+      body.one-player #game #g-powers .power-card { padding:18px 14px; min-height:132px; gap:6px 12px; border-radius:14px; }
+      body.one-player #g-powers strong { font-size:18px; }
+      body.one-player #g-powers .power-description { font-size:13px; }
+      body.one-player #g-powers small { font-size:12px; }
+      body.one-player #g-powers .power-status { font-size:11px; }
+      body.one-player .solo-session button { min-height:46px; padding:10px 20px; font-size:16px; }
+      body.one-player #g-paused { bottom:0; }
+      body.one-player #g-paused button { min-height:52px; padding:12px 24px; font-size:17px; }
+      @media(max-width:1099px) {
+        body.one-player #game .player-panel.solo-active { top:auto; bottom:0; width:100%; height:260px; border-right:0; border-top:1px solid #33404e; padding:10px 14px; }
+        body.one-player #game .player-top { flex-wrap:nowrap; margin-bottom:8px; }
+        body.one-player #game .zoom-tools { width:auto; }
+        body.one-player #game .tools { grid-template-columns:repeat(3,minmax(0,1fr)); }
+        body.one-player #game .interactive-tools { grid-template-columns:1fr 1fr; }
+        body.one-player #game .action-history { display:none; }
+        body.one-player #game #g-powers .power-card { padding:12px; }
+      }
+      @media(max-width:600px) { body.one-player #game .tools { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     </style>
   </head>
   <body>
@@ -473,13 +546,13 @@
       <div class="map-markers" data-map="spreader"><div class="target-preview" hidden><span></span></div><p id="g-feedback-spreader" class="map-feedback"></p></div>
       <div class="map-markers" data-map="curber"><div class="target-preview" hidden><span></span></div><p id="g-feedback-curber" class="map-feedback"></p></div>
       <header class="shared-stats">
-        <h2>Outbreak <span class="round-controls"><span id="g-time"></span><button data-home>End game / Reset</button></span></h2>
-        <div class="totals"><span>Infected <b id="g-infected">0</b></span><span>Non-infected <b id="g-noninfected">0</b></span></div>
+        <h2>Outbreak <span class="round-controls"><span id="g-time"></span><button data-home>End game / Reset</button></span><span class="solo-session"><button id="g-pause" aria-pressed="false">Pause</button><button data-quit-solo>Quit game</button></span></h2>
+        <div class="totals"><span id="g-score"></span><span id="g-progress"></span><span>Infected <b id="g-infected">0</b></span><span>Non-infected <b id="g-noninfected">0</b></span></div>
         <p id="g-status"></p>
         <div id="g-split"><i style="background:#50dda5"></i><i style="background:#ff4545"></i></div>
         <canvas id="g-chart" width="600" height="120" hidden></canvas>
       </header>
-      <div id="g-feed"><h4>What the computer did</h4><ul id="g-feed-list"><li>Watching the city…</li></ul></div>
+      <div id="g-feed"><div class="power-heading"><span>SPECIAL ABILITIES</span><h3 id="g-power-title">Power up</h3><p id="g-power-help"></p></div><div id="g-powers"></div><h4>Opponent activity</h4><ul id="g-feed-list"><li>Watching the city…</li></ul></div>
       <section class="player-panel" data-player="spreader">
         <div class="player-top"><h3>Spreader</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in spreader">+</button><button data-zoom="1.25" aria-label="Zoom out spreader">-</button><button data-zoom="fit">Whole map</button></div></div>
         <div class="private-controls"><div class="action-controls"><h3>Action points <b id="g-sp">0</b></h3>
@@ -489,7 +562,7 @@
         <button data-act="antivaxx">Antivaxx conspiracy<small>E | lower uptake | 5m delay | <span data-cost></span></small></button>
         <button data-act="sickwork">Send someone sick to work<small>R | 15m | click near a case | <span data-cost></span></small></button>
         <button data-act="fakenews">Spread fake news<small>A | +20% contact transmission; less isolation | 3m delay | <span data-cost></span></small><small>Harmful false claim: drinking bleach cures illness. It does not.</small></button>
-        </div><p id="g-toast-spreader"></p></div><aside class="action-history"><h3>My actions &amp; effects <small>Click a location to zoom to it</small></h3><div id="g-effects-spreader" class="effect-list"></div></aside></div>
+                <button data-act="festival" hidden>Festival / concert<small>Click map | <span data-cost></span></small></button><button data-act="relocate" hidden>Move patient zero<small>Click map | <span data-cost></span></small></button><button data-act="blackout" hidden>Blackout<small>Citywide | <span data-cost></span></small></button><button data-act="mutation" hidden>Mutation<small>Citywide | <span data-cost></span></small></button></div><p id="g-toast-spreader"></p></div><aside class="action-history"><h3>My actions &amp; effects <small>Click a location to zoom to it</small></h3><div id="g-effects-spreader" class="effect-list"></div></aside></div>
         <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
       </section>
       <section class="player-panel" data-player="curber">
@@ -502,20 +575,22 @@
         <button data-act="hospitals">New hospitals<small>L | 10m build | isolate cases | <span data-cost></span></small></button>
         <button data-act="newvaccine">New vaccine<small>K | 20m research | 90% protection | <span data-cost></span></small></button>
         <button data-act="education">Health education<small>J | Monitor health, seek care and isolate | -20% contact transmission | 2m delay | <span data-cost></span></small></button>
-        </div><p id="g-toast-curber"></p></div><aside class="action-history"><h3>My actions &amp; effects <small>Click a location to zoom to it</small></h3><div id="g-effects-curber" class="effect-list"></div></aside></div>
+                <button data-act="clinic" hidden>Mobile vaccine clinic<small>Click map · immediate local protection | <span data-cost></span></small></button><button data-act="tracing" hidden>Test &amp; isolate<small>Click map · find and isolate local cases | <span data-cost></span></small></button><button data-act="barrier" hidden>Seismic trench<small>Drag map · max 1.8 km | <span data-cost></span></small></button></div><p id="g-toast-curber"></p></div><aside class="action-history"><h3>My actions &amp; effects <small>Click a location to zoom to it</small></h3><div id="g-effects-curber" class="effect-list"></div></aside></div>
         <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
       </section>
     </div>
     <div id="g-menu">
       <div>
         <h1>Outbreak Göteborg</h1>
-        <p>Spread a virus through the city, or stop it. A round lasts 3 minutes and stands for 60 days.</p>
+        <p>Spread a virus through the city, or stop it. Solo rounds last 2 minutes. Two-player rounds last 3 minutes.</p>
         <div class="choices">
-          <button data-players="1"><b>1 player</b><small>You are the virus. The computer plays the Curber, and gives you a head start before it reacts.</small></button>
+          <button data-players="1" data-role="spreader"><b>Solo · Spreader</b><small>Infect as much of the city as possible. Unlock relocation at 8%, concerts at 20%, blackouts at 30% and mutation at 40%. Build momentum after the first minute.</small></button>
+          <button data-players="1" data-role="curber"><b>Solo · Government</b><small>Contain an automatic outbreak. Protect the city. Unlock a finger-drawn seismic trench at 25% protected or after 20 seconds.</small></button>
           <button data-players="2"><b>2 players</b><small>One plays the Spreader, the other the Curber, on a shared screen.</small></button>
         </div>
       </div>
     </div>
+    <div id="g-paused"><div><h1>Game paused</h1><p>The timer, outbreak and cooldowns are frozen.</p><button id="g-resume">Resume game</button><button data-quit-solo>Quit to menu</button></div></div>
     <div id="g-over"><div><h1 id="g-win"></h1><p id="g-sum"></p><button data-home>Back to home</button></div></div>
     <div id="plan">
       <h2>Plan a change</h2>

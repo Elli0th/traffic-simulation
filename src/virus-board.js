@@ -13,7 +13,8 @@ export function boardState(game) {
   const k = game.scale;
   return {
     phase: game.phase,
-    day: Math.min(DAYS, Math.floor(game.time / DAY) + 1),
+    days:game.soloRole?40:DAYS,
+    day: Math.min(game.soloRole?40:DAYS, Math.floor(game.time / DAY) + 1),
     infected: Math.round((c.e + c.i) * k),
     noninfected: Math.round((c.s + c.r) * k),
     hospital: c.people.hospital,
@@ -51,7 +52,7 @@ const CSS = `
 `;
 
 const HTML = `
-  <header><h1>Outbreak <small data-day>Göteborg</small></h1><span data-time>3:00</span></header>
+  <header><h1>Outbreak <small data-day>Göteborg</small></h1><span data-time>--:--</span></header>
   <div class="tiles">
     <div class="tile"><label>Infected now</label><b data-infected style="color:#ff4545">0</b></div>
     <div class="tile"><label>Not infected</label><b data-noninfected style="color:#50dda5">0</b></div>
@@ -163,7 +164,7 @@ export function startBoard(relay, size) {
   function show(v) {
     const s = v.stats;
     at('time').textContent = v.time;
-    at('day').textContent = s.phase === 'setup' ? 'Göteborg' : `Day ${s.day} of ${DAYS}`;
+    at('day').textContent = s.phase === 'setup' ? 'Göteborg' : `Day ${s.day} of ${s.days || DAYS}`;
     at('infected').textContent = num(s.infected);
     at('noninfected').textContent = num(s.noninfected);
     at('hospital').textContent = num(s.hospital);
