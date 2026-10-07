@@ -46,6 +46,9 @@ export class Sim {
   constructor(map, { seed = 1, clock = 7.5 * 3600 } = {}) {
     const R = map.roads;
     this.rand = mulberry32(seed);
+    // Which trips are made is drawn separately from how they are driven, so that two runs of the same
+    // hours make the same trips even when a change to the streets sends the drivers different ways.
+    this.randTrip = mulberry32(seed + 7919);
     this.time = 0;
     this.clock = clock; // seconds since midnight
     this.tick = 0;
@@ -53,6 +56,11 @@ export class Sim {
     this.nextId = 1;
     this.peakRate = map.peakRate ?? 2.5; // trips started per second at the height of rush hour
     this.demandScale = 1;
+    // Live traffic (see live.js): how busy the measured roads are, in place of the daily profile, and
+    // whether the real buses are being shown, so that none of our own need to set out.
+    this.liveDemand = null;
+    this.liveBuses = false;
+    this.narrowed = []; // streets an accident has taken a lane from
     this.carry = 0;
     this.backlog = [];
     this.pending = [];
@@ -170,7 +178,7 @@ export class Sim {
     this.ambulanceAt = 0;
     // Buses run their real lines, each on its own timetable.
     this.busHeadway = 720;
-    this.busLines = R.busLines.map((l) => ({ ...l, ways: new Set(l.ways), next: this.rand() * 720 }));
+    this.busLines = R.busLines.map((l) => ({ ...l, ways: new Set(l.ways), next: this.randTrip() * 720 }));
 
     this.stamp = 0;
     this.resize();
@@ -271,7 +279,7 @@ export class Sim {
   applyWorks() {
     const hour = this.clock / 3600;
     const active = this.roadworks.filter((w) => (w.from <= w.to ? hour >= w.from && hour < w.to : hour >= w.from || hour < w.to));
-    const key = `${this.edits.length}:${active.map((w) => w.id).join(',')}`;
+    const key = `${this.edits.length}:${active.map((w) => w.id).join(',')}:${this.narrowed.join(',')}`;
     if (key === this.worksKey) return;
     this.worksKey = key;
     for (const e of this.edges) {
@@ -284,6 +292,7 @@ export class Sim {
         else this.edges[ei].shut = true;
       }
     }
+    for (const ei of this.narrowed) this.edges[ei].lanes = Math.max(1, this.edges[ei].lanes - 1);
     for (const c of this.cars) {
       const e = this.edges[c.edge];
       if (c.lane >= e.lanes) c.lane = e.lanes - 1;
@@ -291,6 +300,15 @@ export class Sim {
     }
     this.blobKey = null;
     this.setBlobs(this.lastBlobs);
+  }
+
+  // What the road sensors and incident reports say right now: the speed traffic is really doing on
+  // some streets (edge -> m/s; drivers there go no faster), and the streets an accident has narrowed.
+  setLive(speeds, narrowed) {
+    for (const e of this.edges) e.liveV = 0;
+    for (const [ei, v] of speeds) this.edges[ei].liveV = v;
+    this.narrowed = narrowed;
+    this.applyWorks();
   }
 
   build(x) {
@@ -531,7 +549,7 @@ export class Sim {
   }
 
   pickGate(set) {
-    const r = this.rand() * set.total;
+    const r = this.randTrip() * set.total;
     let lo = 0;
     let hi = set.cum.length - 1;
     while (lo < hi) {
@@ -543,13 +561,13 @@ export class Sim {
   }
 
   pickPlace(list) {
-    return list[Math.floor(this.rand() * list.length)];
+    return list[Math.floor(this.randTrip() * list.length)];
   }
 
   // Starts new trips at the rate the time of day calls for.
   generate(dt) {
     const hour = this.clock / 3600;
-    this.carry += this.peakRate * this.demandScale * demandAt(hour) * dt;
+    this.carry += this.peakRate * this.demandScale * (this.liveDemand ?? demandAt(hour)) * dt;
     while (this.carry >= 1) {
       this.carry -= 1;
       const t = this.trip(hour);
@@ -557,10 +575,10 @@ export class Sim {
       if (t.path?.length) this.backlog.push(t);
     }
     // Buses leave on their timetable, more often by day than at night.
-    for (const line of this.busLines) {
+    for (const line of this.liveBuses ? [] : this.busLines) {
       line.next -= dt * (0.35 + 0.65 * demandAt(hour));
       if (line.next > 0) continue;
-      line.next = this.busHeadway * (0.85 + 0.3 * this.rand());
+      line.next = this.busHeadway * (0.85 + 0.3 * this.randTrip());
       if (line.path === undefined) line.path = this.route(line.from, -1, line.to, 0, 0, line.ways);
       // A closure on the line means a fresh route this time; otherwise every bus follows the same streets.
       let path = line.path;
@@ -581,8 +599,8 @@ export class Sim {
   trip(hour) {
     const morning = hour >= 5 && hour < 11;
     const evening = hour >= 14 && hour < 20;
-    const anywhere = this.rand() < 0.5 ? this.homes : this.works;
-    const r = this.rand();
+    const anywhere = this.randTrip() < 0.5 ? this.homes : this.works;
+    const r = this.randTrip();
     const inbound = morning ? 0.45 : evening ? 0.15 : 0.28;
     const outbound = morning ? 0.15 : evening ? 0.45 : 0.28;
     let from, dest;
@@ -604,7 +622,7 @@ export class Sim {
         if (Math.hypot(this.nodes[dest].x - this.nodes[from].x, this.nodes[dest].z - this.nodes[from].z) > 1500) break;
       }
     }
-    const q = this.rand();
+    const q = this.randTrip();
     const kind = through ? (q < 0.2 ? 'truck' : q < 0.3 ? 'van' : 'car') : q < 0.03 ? 'truck' : q < 0.12 ? 'van' : 'car';
     return { kind, from, dest, tries: 0 };
   }
@@ -819,6 +837,7 @@ export class Sim {
 
     // Desired speed: the limit, bends in the road, and slowing for the turn ahead.
     let v0 = Math.min(e.v * c.f, e.vcap);
+    if (e.liveV) v0 = Math.min(v0, e.liveV * c.f);
     if (next) {
       const dot = e.ox * next.ix + e.oz * next.iz;
       if (dot < 0.97) {

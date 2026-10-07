@@ -140,22 +140,42 @@ export class HttpDepth {
   }
 }
 
-// Listens to a WebSocket that pushes binary depth frames, and hands out the newest one.
+// Listens to a WebSocket that pushes binary depth frames, and hands out the newest one. A connection
+// that drops is opened again every two seconds until close() is called.
 export class SocketDepth {
   constructor(options) {
     this.options = options; // { url, format, width, height }
     this.latest = null;
-    this.socket = new WebSocket(options.url);
-    this.socket.binaryType = 'arraybuffer';
-    this.socket.onmessage = async (event) => {
+    this.down = false;
+    this.closed = false;
+    this.open();
+  }
+  open() {
+    const socket = (this.socket = new WebSocket(this.options.url));
+    socket.binaryType = 'arraybuffer';
+    socket.onopen = () => (this.down = false);
+    socket.onmessage = async (event) => {
       const type = typeof event.data === 'string' ? 'application/json' : 'application/octet-stream';
-      this.latest = await decode(new Response(event.data, { headers: { 'content-type': type } }), this.options);
+      try {
+        const frame = await decode(new Response(event.data, { headers: { 'content-type': type } }), this.options);
+        if (this.socket === socket) this.latest = frame;
+      } catch {
+        // A frame that cannot be read is skipped; the next one may be fine.
+      }
+    };
+    socket.onclose = () => {
+      if (this.closed || this.socket !== socket) return;
+      this.down = true;
+      this.latest = null; // the last frame is no longer what the camera sees
+      setTimeout(() => !this.closed && this.socket === socket && this.open(), 2000);
     };
   }
   async read() {
+    if (this.down) throw new Error(`No connection to the depth camera at ${this.options.url}`);
     return this.latest;
   }
   close() {
+    this.closed = true;
     this.socket.close();
   }
 }

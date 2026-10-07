@@ -6,3 +6,8 @@ dist/
 # fetch these again with scripts/fetch-map.mjs only if you want to rebuild a map.
 data/*.json
 data/west/
+
+# Keys for live traffic (see .env.example).
+.env
+.env.*
+!.env.example

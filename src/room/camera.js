@@ -257,7 +257,7 @@ function describe() {
   } else if (calibrator) {
     hint = `Put an object on the glowing circle on the table (${calibrator.step + 1} of ${MARKERS.length}) and take your hand away. Or click where it is in the picture below.`;
   } else if (!calibration()) hint = 'Press Calibrate. The table will show four circles, one at a time.';
-  else if (config.source === 'sim' && source.objects.length && !raw.length) {
+  else if (config.source === 'sim' && source?.objects?.length && !raw.length) {
     // Only the pretend camera can know this: the objects were there when the empty table was captured.
     hint = 'The objects on the pretend table were there when the table was captured as empty, so they count as part of it. Press Clear, capture the empty table again, then put objects back.';
   } else {
@@ -283,7 +283,7 @@ const pctx = pretend.getContext('2d');
 function drawPretend() {
   $('virtual').hidden = config.source !== 'sim';
   $('remote').hidden = config.source === 'sim';
-  if (config.source !== 'sim' || !source) return;
+  if (config.source !== 'sim' || !source?.objects) return; // the pretend camera is chosen but not connected yet
   const W = pretend.width;
   const H = pretend.height;
   pctx.clearRect(0, 0, W, H);
@@ -304,6 +304,7 @@ function drawPretend() {
 }
 
 pretend.addEventListener('click', (e) => {
+  if (!source?.objects) return;
   const box = pretend.getBoundingClientRect();
   const x = (e.clientX - box.left) / box.width;
   const y = (e.clientY - box.top) / box.height;
@@ -312,12 +313,12 @@ pretend.addEventListener('click', (e) => {
   else source.objects.push({ x, y, r: 0.028, h: 95 });
 });
 $('onmarker').addEventListener('click', () => {
-  if (!calibrator || calibrator.step >= MARKERS.length) return;
+  if (!calibrator || calibrator.step >= MARKERS.length || !source?.objects) return;
   const [x, y] = MARKERS[calibrator.step];
   source.objects = [{ x, y, r: 0.028, h: 95 }];
 });
 $('clear').addEventListener('click', () => {
-  source.objects = [];
+  if (source?.objects) source.objects = [];
   problem = '';
 });
 
@@ -351,7 +352,7 @@ for (const id of ['nearIsSmaller', 'sending']) {
 $('connect').addEventListener('click', connect);
 $('empty').addEventListener('click', () => {
   // With the pretend table we can tell that it is not empty; with the real one you have to look.
-  if (config.source === 'sim' && source?.objects.length) {
+  if (config.source === 'sim' && source?.objects?.length) {
     problem = 'The pretend table is not empty. Press Clear first, then capture it.';
     return;
   }
@@ -382,8 +383,14 @@ relay.send('who', {});
 
 connect();
 async function loop() {
-  await tick();
-  draw();
+  // Whatever goes wrong with one frame, the next is still read.
+  try {
+    await tick();
+    draw();
+  } catch (error) {
+    problem = `Something went wrong reading the camera: ${error.message}`;
+    $('hint').textContent = problem;
+  }
   setTimeout(loop, Number(config.interval));
 }
 loop();
