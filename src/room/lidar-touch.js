@@ -11,11 +11,23 @@ export class LidarTouchController {
       'ws://pi-lidar.local/scan',
       'ws://localhost:8024/scan',
     ];
+    const urlParams = typeof location !== 'undefined' ? new URLSearchParams(location.search) : null;
+    const urlYOff = urlParams?.get('yoff') ? Number(urlParams.get('yoff')) : null;
+    const urlXOff = urlParams?.get('xoff') ? Number(urlParams.get('xoff')) : null;
+    const storedYOff = typeof localStorage !== 'undefined' ? Number(localStorage.getItem('lidar_y_offset') ?? 0) : 0;
+    const storedXOff = typeof localStorage !== 'undefined' ? Number(localStorage.getItem('lidar_x_offset') ?? 0) : 0;
+
+    this.yOffset = urlYOff ?? storedYOff;
+    this.xOffset = urlXOff ?? storedXOff;
+    this.feedbackText = '';
+    this.feedbackUntil = 0;
+
+    // Shifted minY/maxY by +100mm (from [50, 950] to [150, 1050]) to correct the 10cm vertical downward desync
     this.tableBounds = options.tableBounds || {
       minX: -720.0,
       maxX: 720.0,
-      minY: 50.0,
-      maxY: 950.0,
+      minY: 150.0,
+      maxY: 1050.0,
     };
     this.clusterRadius = options.clusterRadius || 80.0; // mm
     this.minPoints = options.minPoints || 2;
@@ -25,6 +37,37 @@ export class LidarTouchController {
     this.connected = false;
     this.nextId = 1;
     this.touchRipples = []; // { x, y, r, alpha, color }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', (e) => this.handleKeyCalibration(e));
+    }
+  }
+
+  handleKeyCalibration(e) {
+    if (e.target instanceof HTMLInputElement) return;
+    let changed = false;
+    if (e.key === '[' || (e.altKey && e.key === 'ArrowDown')) {
+      this.yOffset -= 10; // moves projected point 10mm down
+      changed = true;
+    } else if (e.key === ']' || (e.altKey && e.key === 'ArrowUp')) {
+      this.yOffset += 10; // moves projected point 10mm up
+      changed = true;
+    } else if (e.key === '{' || (e.altKey && e.key === 'ArrowLeft')) {
+      this.xOffset -= 10;
+      changed = true;
+    } else if (e.key === '}' || (e.altKey && e.key === 'ArrowRight')) {
+      this.xOffset += 10;
+      changed = true;
+    }
+    if (changed) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('lidar_y_offset', String(this.yOffset));
+        localStorage.setItem('lidar_x_offset', String(this.xOffset));
+      }
+      this.feedbackText = `Lidar Cal: Y ${this.yOffset >= 0 ? '+' : ''}${this.yOffset}mm | X ${this.xOffset >= 0 ? '+' : ''}${this.xOffset}mm ([ / ] nudge)`;
+      this.feedbackUntil = performance.now() + 2500;
+      console.log(`[LidarTouch] Calibration updated: Y=${this.yOffset}mm, X=${this.xOffset}mm`);
+    }
   }
 
   start() {
@@ -90,12 +133,17 @@ export class LidarTouchController {
       const x = r * Math.sin(a);
       const y = r * Math.cos(a);
 
-      // Check if within physical table projection box
+      const minX = this.tableBounds.minX + this.xOffset;
+      const maxX = this.tableBounds.maxX + this.xOffset;
+      const minY = this.tableBounds.minY + this.yOffset;
+      const maxY = this.tableBounds.maxY + this.yOffset;
+
+      // Check if within physical table projection box (with 40mm margin)
       if (
-        x >= this.tableBounds.minX &&
-        x <= this.tableBounds.maxX &&
-        y >= this.tableBounds.minY &&
-        y <= this.tableBounds.maxY
+        x >= minX - 40 &&
+        x <= maxX + 40 &&
+        y >= minY - 40 &&
+        y <= maxY + 40
       ) {
         candidates.push({ x, y });
       }
@@ -143,7 +191,10 @@ export class LidarTouchController {
 
   updateTouches(clusters) {
     const now = performance.now();
-    const { minX, maxX, minY, maxY } = this.tableBounds;
+    const minX = this.tableBounds.minX + this.xOffset;
+    const maxX = this.tableBounds.maxX + this.xOffset;
+    const minY = this.tableBounds.minY + this.yOffset;
+    const maxY = this.tableBounds.maxY + this.yOffset;
 
     const matchedClusters = new Set();
     const liveTouchIds = new Set();

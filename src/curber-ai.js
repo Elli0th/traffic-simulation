@@ -23,6 +23,7 @@ const PLAN = [
   { kind: 'lockdown', hotspot: true },
   { kind: 'vaccines' },
   { kind: 'hospitals' },
+  { kind: 'education' },
   { kind: 'lockdown', hotspot: true },
   { kind: 'newvaccine' },
 ];

@@ -100,7 +100,7 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0, {
 
   const transitCases = Math.round((game.fromTransit || 0) * scale);
 
-  const spreaderDeck = ['party', 'antimask', 'antivaxx', 'sickwork', ...(game.soloRole==='spreader'?['relocate','festival','blackout','mutation']:[])].map((k) => {
+  const spreaderDeck = ['party', 'antimask', 'antivaxx', 'sickwork', 'fakenews', ...(game.soloRole==='spreader'?['relocate','festival','blackout','mutation']:[])].map((k) => {
     const act = game.action?.(k) || ACTIONS[k];
     const readyAt = game.ready[k] || 0;
     const cooldown = Math.max(0, readyAt - gameTime);
@@ -142,7 +142,7 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0, {
       };
     });
 
-  const curberDeck = ['lockdown', 'vaccines', 'distancing', 'hospitals', 'newvaccine', ...(game.soloRole==='curber'?['clinic','tracing','barrier']:[])].map((k) => {
+  const curberDeck = ['lockdown', 'vaccines', 'distancing', 'hospitals', 'newvaccine', 'education', ...(game.soloRole==='curber'?['clinic','tracing','barrier']:[])].map((k) => {
     const act = game.action?.(k) || ACTIONS[k];
     const readyAt = game.ready[k] || 0;
     const cooldown = Math.max(0, readyAt - gameTime);

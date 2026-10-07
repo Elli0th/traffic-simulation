@@ -22,11 +22,13 @@ export const ACTIONS = {
   antimask: { side: 'spreader', cost: 14, delay: 300, duration: 1800, cooldown: 2100, label: 'Antimask conspiracy' },
   antivaxx: { side: 'spreader', cost: 16, delay: 300, duration: 2400, cooldown: 2700, label: 'Antivaxx conspiracy' },
   sickwork: { side: 'spreader', cost: 10, delay: 0, duration: 900, cooldown: 300, label: 'Send someone sick to work' },
+  fakenews: { side: 'spreader', cost: 16, delay: 180, duration: 1800, cooldown: 1980, label: 'Spread fake news' },
   lockdown: { side: 'curber', cost: 12, delay: 60, duration: 1800, cooldown: 120, label: 'Lockdown' },
   vaccines: { side: 'curber', cost: 15, delay: 120, duration: 1800, cooldown: 2100, label: 'Free vaccines' },
   distancing: { side: 'curber', cost: 18, delay: 60, duration: 1800, cooldown: 1860, label: 'Social distancing' },
   hospitals: { side: 'curber', cost: 22, delay: 600, duration: Infinity, cooldown: Infinity, label: 'New hospitals' },
   newvaccine: { side: 'curber', cost: 28, delay: 1200, duration: Infinity, cooldown: Infinity, label: 'New vaccine' },
+  education: { side: 'curber', cost: 16, delay: 120, duration: 1800, cooldown: 1920, label: 'Health education' },
 };
 
 const TICK = 1; // simulated seconds between contact passes
@@ -446,10 +448,13 @@ export class Outbreak {
     this.lockdowns = this.lockdowns.filter((z) => z.until > this.time);
     const { beta, reach, infectious } = this.base;
     const masked = this.time < this.masksUntil ? 0.55 : 1; // masks cut transmission by about 45%
+    // Fictional behaviour effects. Harmful false cures never heal or grant immunity.
+    const misinformed = this.active('fakenews');
+    const educated = this.active('education');
     const range = reach * this.virus.reach;
-    const rate = this.transmissionBoost() * (this.active('mutation') ? 2 : 1) * (this.active('blackout') ? 1.5 : 1) * beta * this.virus.spread * masked * (this.active('antimask') ? 1.4 : 1) * (this.active('distancing') ? 0.55 : 1);
+    const rate = this.transmissionBoost() * (this.active('mutation') ? 2 : 1) * (this.active('blackout') ? 1.5 : 1) * beta * this.virus.spread * masked * (this.active('antimask') ? 1.4 : 1) * (this.active('distancing') ? 0.55 : 1) * (misinformed ? 1.2 : 1) * (educated ? 0.8 : 1);
     // Each level of testing and tracing finds about 12% of infectious people per day; hospital testing adds more.
-    const detect = 1 - Math.exp((-(0.12 * this.testing + (this.active('hospitals') && !this.active('blackout') ? 0.25 : 0)) * this.virus.stealth) / DAY);
+    const detect = 1 - Math.exp((-(0.12 * this.testing + (this.active('hospitals') && !this.active('blackout') ? 0.25 : 0) + (educated ? 0.2 : 0)) * this.virus.stealth * (misinformed ? 0.5 : 1)) / DAY);
 
     // Hash everyone who is outside, so each infectious person only looks at their neighbours.
     const cells = new Map();

@@ -258,6 +258,36 @@ check('rapid taps reward only their owner and respect the rate limit', () => {
   assert.equal(g.rally('curber'), false);
 });
 
+check('fake news and education have delayed, temporary effects on contact and isolation', () => {
+  const g = fixture(100);
+  g.base.beta = 0.01;
+  assert.ok(g.act('fakenews'));
+  assert.ok(g.act('education'));
+  g.step(119);
+  assert.equal(g.active('education'), false);
+  assert.equal(g.active('fakenews'), false);
+  g.step(1);
+  assert.ok(Math.abs(g.rate - 0.008) < 1e-9);
+  g.step(60);
+  assert.ok(Math.abs(g.rate - 0.0096) < 1e-9);
+  assert.equal(g.act('education'), false);
+  assert.equal(g.act('fakenews'), false);
+  g.step(1800);
+  assert.equal(g.active('education'), false);
+  assert.equal(g.active('fakenews'), false);
+  assert.ok(Math.abs(g.rate - 0.01) < 1e-9);
+  function isolated(fake) {
+    const h = fixture(200);
+    for (const p of h.agents) { p.inf = I; p.infT = 10000; }
+    h.act('education');
+    if (fake) h.act('fakenews');
+    h.time = 180;
+    h.step(60);
+    return h.counts().iso;
+  }
+  assert.ok(isolated(false) > isolated(true));
+});
+
 check('ended games stop advancing', () => {
   const g = fixture();
   g.phase = 'over';
