@@ -1308,6 +1308,7 @@ if (game) {
   // Real-time RPLIDAR C1 touch engine for table projection
   lidarTouch = new LidarTouchController({
     onTap: (side, u, v, screenX, screenY) => {
+      if (calibrating) return; // the finger on the calibration circle is not playing
       activeSide = side;
       // 1. Check if a game button was tapped
       const elAtPoint = document.elementFromPoint(screenX, screenY);
@@ -1758,7 +1759,29 @@ function frame(now) {
   draw(dt, blobs);
   if (touchCtx && lidarTouch) {
     touchCtx.clearRect(0, 0, innerWidth, innerHeight);
-    lidarTouch.drawRipples(touchCtx);
+    if (calibrating) {
+      // The lidar page is calibrating: the circle to hold a finger on, over a darkened game, so that
+      // there is no need to leave the game for the traffic view to calibrate.
+      touchCtx.fillStyle = 'rgba(0, 0, 0, 0.88)';
+      touchCtx.fillRect(0, 0, innerWidth, innerHeight);
+      const cx = calibrating.x * innerWidth;
+      const cy = calibrating.y * innerHeight;
+      const r = innerWidth * (0.02 + 0.003 * Math.sin(now / 180));
+      touchCtx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+      touchCtx.beginPath();
+      touchCtx.arc(cx, cy, r, 0, Math.PI * 2);
+      touchCtx.fill();
+      touchCtx.strokeStyle = '#ffffff';
+      touchCtx.lineWidth = 4;
+      touchCtx.stroke();
+      touchCtx.fillStyle = '#ffffff';
+      touchCtx.beginPath();
+      touchCtx.arc(cx, cy, r * 0.15, 0, Math.PI * 2);
+      touchCtx.fill();
+      touchCtx.font = `600 ${Math.round(innerWidth * 0.018)}px ui-sans-serif, system-ui, sans-serif`;
+      touchCtx.textAlign = 'center';
+      touchCtx.fillText(`Calibrating ${calibrating.index + 1} of 4: hold one finger still on the circle`, innerWidth / 2, innerHeight / 2);
+    } else lidarTouch.drawRipples(touchCtx);
   }
   tellScreens(blobs, now);
   pushFrame(now);
