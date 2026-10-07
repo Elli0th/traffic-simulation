@@ -224,9 +224,10 @@ address it prints (for example `http://192.168.0.117:5173`). Other machines use 
 ### Setting up, in order
 
 For the outbreak game, one command does the start of a slot: `npm run room boot`. It checks that the
-laptop is on the room wifi, that the dev server and the lidar answer, opens the lidar page, puts the
-game on the projector and its dashboard on the TVs, and stops with what to do if any of that is not
-ready. The lidar page remembers its calibration and the empty table, so it only asks for them again
+laptop is on the room wifi, that the dev server and the lidar answer, puts the dashboards on the TVs
+and opens the stream page, and stops with what to do if any of that is not ready. The table's picture
+is never run by the projector's own computer: it runs on the laptop and is streamed once Start
+streaming is pressed on that page. The lidar page remembers its calibration and the empty table, so it only asks for them again
 if the table, lidar or projector has moved. The steps below are what it does, by hand.
 
 1. **Get the pictures onto the displays.** Join the room wifi (`AID-Hackathon-5G`) and, during your

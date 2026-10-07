@@ -2,8 +2,9 @@
 // with the dev server already running:
 //
 //   npm run room boot            everything for the outbreak game in one go: checks the wifi, the dev
-//                                server and the lidar, opens the lidar page, puts the game on the displays
-//   npm run room show            table on the projector, 3D view on both TVs
+//                                server and the lidar, opens the stream page (the table
+//                                is streamed from this laptop, never run by the projector), dashboards on the TVs
+//   npm run room show            the stream page for the table, 3D view on both TVs
 //   npm run room show game       the two-player outbreak game
 //   npm run room show draw       light painting instead of the city
 //   npm run room show check      the test card on the projector only: calibration circles, rings for
@@ -94,19 +95,9 @@ async function boot() {
   const lidar = sim ? 'http://localhost:8024' : (process.env.ROOM_LIDAR ?? 'http://192.168.42.24');
   step(await answers(`${lidar}/status`), 'lidar answers', sim ? 'Start the virtual room (Docker).' : 'The lidar is not answering. Check its power and that this laptop is on the room wifi.');
 
-  // The lidar page, in the browser that holds the calibration. It has to stay visible on the laptop.
-  const page = `http://localhost:${port}/lidar.html?${sim ? 'url=ws://localhost:8024/scan' : 'room'}`;
-  try {
-    const brave = '/Applications/Brave Browser.app';
-    execFileSync('open', fs.existsSync(brave) ? ['-a', brave, page] : [page]);
-    console.log(`ok   lidar page opened: ${page}`);
-    console.log('     Keep that window visible. If it does not say "Live", capture the empty table (and calibrate if asked).');
-  } catch {
-    console.log(`     Open ${page} yourself and keep the window visible.`);
-  }
-
+  // No lidar page: the game reads the lidar itself (src/room/lidar-touch.js) and needs no calibration.
   const base = process.env.PAGE ?? `http://${sim ? 'host.docker.internal' : address}:${port}`;
-  await showGame(base);
+  await showGame(base, port);
   console.log('\nWhat the displays say now:');
   for (const name of Object.keys(DISPLAYS)) await call(name, '/status');
 }
@@ -122,10 +113,27 @@ async function serverPort() {
   return 5173;
 }
 
-// The outbreak game: the table on the projector, and each player's own dashboard on a TV, the
-// Spreader's on the left one and the Curber's on the right (the same layout as scripts/room-virus.mjs).
-async function showGame(base) {
-  await call('projector', '/show', { url: `${base}/?game=table` });
+// The table's picture is never run by the projector's own computer (a Raspberry Pi, too slow for it):
+// it runs in the stream page on this laptop and is sent to the projector frame by frame. Starting the
+// stream takes a click in the browser, so this opens the page and says so; nothing reaches the
+// projector until then.
+function openStream(port, mode) {
+  const page = `http://localhost:${port}/stream.html?mode=${mode}`;
+  try {
+    const brave = '/Applications/Brave Browser.app';
+    execFileSync('open', fs.existsSync(brave) ? ['-a', brave, page] : [page]);
+    console.log(`ok   stream page opened: ${page}`);
+  } catch {
+    console.log(`     Open ${page} yourself.`);
+  }
+  console.log('     Press "Start streaming" there and allow it to share the tab: that puts the table on the projector.');
+  console.log('     Keep that window visible: a hidden tab is slowed down by the browser.');
+}
+
+// The outbreak game: the table streamed from this laptop, and each player's own dashboard on a TV,
+// the Spreader's on the left one and the Curber's on the right (the same layout as scripts/room-virus.mjs).
+async function showGame(base, port) {
+  openStream(port, 'game');
   await call('tv-1', '/show', { url: `${base}/dashboard.html?side=spreader` });
   // tv=2 lets this one follow the player's role in a solo round; the left TV turns to the 3D city by itself.
   await call('tv-2', '/show', { url: `${base}/dashboard.html?side=curber&tv=2` });
@@ -135,18 +143,23 @@ const [action = 'status', what = ''] = process.argv.slice(2);
 if (action === 'boot') {
   await boot();
 } else if (action === 'show') {
-  const base = process.env.PAGE ?? `http://${laptop()}:${await serverPort()}`;
+  const port = await serverPort();
+  const base = process.env.PAGE ?? `http://${laptop()}:${port}`;
   if (what === 'check') {
     // Only the projector: the test card is for the table, and the TVs are left as they are.
     await call('projector', '/show', { url: `${base}/check.html` });
   } else if (what === 'game') {
     // The outbreak game keeps its panels: the players press them with hands and pieces.
-    await showGame(base);
+    await showGame(base, port);
+  } else if (what === 'draw') {
+    // Light painting is a page light enough for the projector's own computer.
+    await call('projector', '/show', { url: `${base}/draw.html?nohud` });
+    for (const tv of ['tv-1', 'tv-2']) await call(tv, '/show', { url: `${base}/draw.html?view=screen&nohud` });
   } else {
-    const page = base + (what === 'draw' ? '/draw.html' : '/');
-    const query = what && what !== 'draw' ? [what] : []; // for example map=west
-    // The displays have no keyboard, so the panels start hidden.
-    await call('projector', '/show', { url: `${page}?${['nohud', ...query].join('&')}` });
+    const page = base + '/';
+    const query = what ? [what] : []; // for example map=west
+    // The traffic view on the table is streamed from this laptop too; the TVs load their own 3D view.
+    openStream(port, `traffic${what.startsWith('map=') ? `&${what}` : ''}`);
     for (const tv of ['tv-1', 'tv-2']) await call(tv, '/show', { url: `${page}?${['view=screen', 'nohud', ...query].join('&')}` });
   }
 } else if (action === 'idle' || action === 'blank') {

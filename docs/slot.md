@@ -63,16 +63,19 @@ Run everything from the live folder, `.claude/worktrees/game-room-api`.
 
 ## A slot that shows the game
 
-Same start as above (steps 1 and 2: the recording server, the lidar page visible in Brave), then:
+The game runs on the laptop only. The projector's own computer (a Raspberry Pi) never runs it: the
+laptop streams the finished picture to it. Start the server (`npm run live`, or `npm run live:record`), then:
 
-1. **Take the room for the game.** This is the step that touches the projector and the TVs.
+1. **Take the room for the game.**
 
    ```bash
    npm run room boot
    ```
 
-   The projector opens `/?game=table` on the menu, the TVs their dashboards. It stops with what
-   to do if the wifi, the server or the lidar is not ready.
+   It checks the wifi, the server and the lidar, puts the dashboards on the TVs and opens the
+   stream page in Brave. Nothing is on the projector yet: press **Start streaming** on that page
+   and allow it to share the tab. Keep that window visible. The status line says how many frames
+   a second the projector is getting (at most 30).
 
 2. **No calibration for the game.** Its touch is the virus-game branch's: the table is a fixed box
    in front of the lidar. If taps land off, `[` and `]` nudge them 10 mm down and up, `{` and `}`
