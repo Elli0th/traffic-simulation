@@ -320,16 +320,17 @@
       .totals { display:flex; gap:40px; font-size:16px; margin-bottom:6px; }
       .totals b { margin-left:10px; font-size:22px; font-variant-numeric:tabular-nums; }
       .totals span:first-child b { color:#ff4545; } .totals span:last-child b { color:#50dda5; }
-      #game .player-panel { position:absolute; bottom:0; width:50%; height:224px; box-sizing:border-box; padding:8px 12px; background:#101720; border-top:1px solid #33404e; pointer-events:auto; overflow:auto; }
+      #game .player-panel { position:absolute; bottom:0; width:50%; height:320px; box-sizing:border-box; padding:8px 12px; background:#101720; border-top:1px solid #33404e; pointer-events:auto; overflow:visible; }
       [data-player="spreader"] { left:0; border-right:2px solid #33404e; }
       [data-player="curber"] { right:0; }
-      body.game::after { content:''; position:fixed; left:calc(50% - 1px); top:112px; bottom:224px; width:2px; background:#33404e; pointer-events:none; z-index:9; }
+      body.game::after { content:''; position:fixed; left:calc(50% - 1px); top:112px; bottom:320px; width:2px; background:#33404e; pointer-events:none; z-index:9; }
       .player-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
       #game .player-top h3 { margin:0; }
       .zoom-tools { display:flex; gap:4px; }
       #game [data-reveal] { margin:6px 0; width:100%; text-align:center; touch-action:none; }
       .private-controls { display:none; }
-      .player-panel.revealed .private-controls { display:block; }
+      .player-panel.revealed .private-controls { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(0,1fr); gap:12px; height:224px; }
+      .action-controls, .action-history { scrollbar-width:none; overflow:auto; padding-right:3px; }
       #game .private-controls h3 { margin:2px 0 4px; }
       #game .tools { grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; }
       #game .tools button { font-size:11px; padding:5px; }
@@ -338,7 +339,41 @@
       .pane-help { margin:4px 0; color:#8a98a8; font-size:10px; }
       #game #g-chart { display:none; }
       #g-over { z-index:20; }
+      @media(max-width:800px) { .player-panel.revealed .private-controls { grid-template-columns:1fr; height:auto; } }
       @media(max-width:800px) { #game .tools { grid-template-columns:repeat(2,minmax(0,1fr)); } .totals { gap:16px; font-size:13px; } }
+      .map-markers { position:absolute; top:112px; bottom:320px; width:50%; overflow:hidden; pointer-events:none; }
+      [data-map="spreader"] { left:0; } [data-map="curber"] { right:0; }
+      #game .action-pin { position:absolute;  padding:5px 9px; border:2px solid #ff9655; border-radius:8px; background:#171b25; box-shadow:0 2px 12px #000; text-align:center; pointer-events:auto; font-size:12px; min-width:94px; }
+      #game .action-pin.curber { border-color:#59d3ff; }
+      .action-pin::after { content:''; position:absolute; left:calc(50% - 5px); bottom:-8px; width:8px; height:8px; border-radius:50%; background:#fff; box-shadow:0 0 0 3px #111; }
+      .action-pin span { display:block; font-size:10px; color:#d5dfeb; }
+      #game .action-pin[data-state="pending"] { border-style:dashed; }
+      #game .action-pin[data-state="finished"] { opacity:.55; }
+      #game .interactive-tools { display:grid; grid-template-columns:2fr 1fr; gap:6px; margin:6px 0; }
+      #game [data-rally] { position:relative; border-color:#758ba3; background:#243c50; touch-action:none; user-select:none; }
+      #game [data-rally]:active { background:#365d77; transform:scale(.98); }
+      .tap-reward { position:absolute; right:10px; top:8px; color:#ffe183; font-size:18px; font-weight:700; }
+      .effort-track { height:4px; margin-bottom:8px; background:#26323e; border-radius:4px; overflow:hidden; }
+      .effort-track i { display:block; height:100%; width:0; background:#ffe183; transition:width .1s; }
+      .action-area { position:absolute;  border:2px solid #ff9655; border-radius:50%; background:#ff965530; box-sizing:border-box; }
+      .action-area.curber { border-color:#59d3ff; background:#59d3ff25; }
+      .action-area[data-state="pending"] { border-style:dashed; background:none; }
+      .action-area[data-state="finished"] { opacity:.3; }
+      .target-preview { position:absolute;  border:2px dashed #ffe183; border-radius:50%; background:#ffe18318; box-sizing:border-box; }
+      .target-preview span { position:absolute; bottom:calc(100% + 8px); left:0; padding:5px 8px; border-radius:5px; background:#172334; color:#ffe183; white-space:nowrap; font-size:12px; }
+      .map-feedback { position:absolute; left:10px; right:10px; top:6px; margin:0; padding:8px; background:#121d2bea; border-radius:6px; font-size:12px; color:#ffe183; }
+      .map-feedback:empty { display:none; }
+      #game .effect-row { display:block; width:100%; margin:4px 0; padding:6px 8px; border-left:3px solid #50dda5; }
+      #game .effect-row[data-state="pending"] { border-left-color:#ffe183; }
+      #game .effect-row[data-state="finished"] { border-left-color:#778390; opacity:.6; }
+      .effect-row span { display:block; font-size:11px; }
+      .effect-row small { clear:both; }
+      #game .private-controls h3 small { display:block; color:#8a98a8; font-size:10px; font-weight:400; text-transform:none; letter-spacing:0; }
+      #game [hidden] { display:none !important; }
+      body.game #game { display:contents; position:static; }
+      #game .shared-stats, #game .player-panel { position:fixed; z-index:20; }
+      #game .map-markers { position:fixed; z-index:12; }
+      .action-controls::-webkit-scrollbar, .action-history::-webkit-scrollbar { display:none; }
     </style>
   </head>
   <body>
@@ -362,6 +397,8 @@
       </p>
     </div>
     <div id="game">
+      <div class="map-markers" data-map="spreader"><div class="target-preview" hidden><span></span></div><p id="g-feedback-spreader" class="map-feedback"></p></div>
+      <div class="map-markers" data-map="curber"><div class="target-preview" hidden><span></span></div><p id="g-feedback-curber" class="map-feedback"></p></div>
       <header class="shared-stats">
         <h2>Outbreak <span id="g-time"></span></h2>
         <div class="totals"><span>Infected <b id="g-infected">0</b></span><span>Non-infected <b id="g-noninfected">0</b></span></div>
@@ -372,24 +409,30 @@
       <section class="player-panel" data-player="spreader">
         <div class="player-top"><h3>Spreader</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in spreader">+</button><button data-zoom="1.25" aria-label="Zoom out spreader">-</button><button data-zoom="fit">Whole map</button></div></div>
         <button data-reveal aria-expanded="false">Show / hide my points &amp; controls</button>
-        <div class="private-controls"><h3>Action points <b id="g-sp">0</b></h3><div class="tools">
+        <div class="private-controls"><div class="action-controls"><h3>Action points <b id="g-sp">0</b></h3>
+        <div class="interactive-tools"><button data-rally>Rally supporters<small>Tap rapidly or hold: +0.3 points per registered tap</small><span class="tap-reward"></span></button><button data-repeat>Repeat here<small>Choose a map location first</small></button></div>
+        <div class="effort-track"><i id="g-effort-spreader"></i></div>
+        <div class="tools">
         <button data-act="party">Start a party (10 pax)<small>Q | 10m | click map | <span data-cost></span></small></button>
         <button data-act="antimask">Antimask conspiracy<small>W | +40% transmission | 5m delay | <span data-cost></span></small></button>
         <button data-act="antivaxx">Antivaxx conspiracy<small>E | lower uptake | 5m delay | <span data-cost></span></small></button>
         <button data-act="sickwork">Send someone sick to work<small>R | 15m | click near a case | <span data-cost></span></small></button>
-        </div><p id="g-toast-spreader"></p></div>
+        </div><p id="g-toast-spreader"></p></div><aside class="action-history"><h3>My actions &amp; effects <small>Click a location to zoom to it</small></h3><div id="g-effects-spreader" class="effect-list"></div></aside></div>
         <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
       </section>
       <section class="player-panel" data-player="curber">
         <div class="player-top"><h3>Curber</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in curber">+</button><button data-zoom="1.25" aria-label="Zoom out curber">-</button><button data-zoom="fit">Whole map</button></div></div>
         <button data-reveal aria-expanded="false">Show / hide my points &amp; controls</button>
-        <div class="private-controls"><h3>Action points <b id="g-cp">0</b></h3><div class="tools">
+        <div class="private-controls"><div class="action-controls"><h3>Action points <b id="g-cp">0</b></h3>
+        <div class="interactive-tools"><button data-rally>Mobilise volunteers<small>Tap rapidly or hold: +0.3 points per registered tap</small><span class="tap-reward"></span></button><button data-repeat>Repeat here<small>Choose a map location first</small></button></div>
+        <div class="effort-track"><i id="g-effort-curber"></i></div>
+        <div class="tools">
         <button data-act="lockdown">Lockdown<small>I | 30m | click map | <span data-cost></span></small></button>
         <button data-act="vaccines">Free vaccines<small>O | 2m rollout | 5m protection | <span data-cost></span></small></button>
         <button data-act="distancing">Social distancing<small>P | -45% transmission | 1m delay | <span data-cost></span></small></button>
         <button data-act="hospitals">New hospitals<small>L | 10m build | isolate cases | <span data-cost></span></small></button>
         <button data-act="newvaccine">New vaccine<small>K | 20m research | 90% protection | <span data-cost></span></small></button>
-        </div><p id="g-toast-curber"></p></div>
+        </div><p id="g-toast-curber"></p></div><aside class="action-history"><h3>My actions &amp; effects <small>Click a location to zoom to it</small></h3><div id="g-effects-curber" class="effect-list"></div></aside></div>
         <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
       </section>
     </div>

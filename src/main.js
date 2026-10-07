@@ -6,7 +6,8 @@ import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
 import { Outbreak, ACTIONS } from './virus.js';
-import { SIDES, gameRect, sideAt, ownsAction, privateOverlays, publicCounts } from './game-view.js';
+import { SIDES, gameRect, sideAt, ownsAction, publicCounts, actionState, nearestPlace, ownedEvents } from './game-view.js';
+import { stepOutbreakWorld, GAME_STEP } from './game-runtime.js';
 import * as relay from './room/relay.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
@@ -40,6 +41,7 @@ const game = params.has('game') && params.get('view') !== 'screen' ? new Outbrea
 if (game) document.body.classList.add('game');
 
 function stepAll(dt) {
+  if (game) { stepOutbreakWorld(sim, people, game, dt); return; }
   sim.step(dt);
   trams.step(dt);
   ferries.step(dt);
@@ -47,24 +49,29 @@ function stepAll(dt) {
   game?.step(dt);
 }
 // Start with the city already busy rather than filling up from empty.
-for (let t = 0; t < 420; t += 0.15) stepAll(0.15);
+for (let t = 0; t < (game ? 60 : 420); t += game ? GAME_STEP : 0.15) stepAll(game ? GAME_STEP : 0.15);
 
 // ---------- renderer, cameras, lights ----------
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: !game, alpha: false, preserveDrawingBuffer: false });
+renderer.setPixelRatio(game ? 1 : Math.min(devicePixelRatio, 2));
 renderer.localClippingEnabled = true; // lets the ground be cut off at the edge of the map
 document.body.appendChild(renderer.domElement);
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#000000');
+scene.background = game ? null : new THREE.Color('#000000');
+if (game) renderer.autoClear = false;
 const sky = new THREE.HemisphereLight('#dfe8ff', '#30343c', 1.6);
 const sun = new THREE.DirectionalLight('#fff1d6', 1.5);
 sun.position.set(0.35, 1, 0.55);
 scene.add(sky, sun);
 
-scene.add(buildGround(map), buildBuildings(map), buildTrees(map), buildStops(map));
+const cityGround = buildGround(map);
+const cityBuildings = buildBuildings(map);
+if (game) cityBuildings.material = new THREE.MeshBasicMaterial({ color: '#555e6b' });
+scene.add(cityGround, cityBuildings);
+if (!game) scene.add(buildTrees(map), buildStops(map));
 const labels = buildLabels(map);
 scene.add(...labels);
 
@@ -114,7 +121,7 @@ function updateCameras() {
 
 const gameViews = Object.fromEntries(SIDES.map(side => {
   const cam = tableCam.clone();
-  return [side, { cam, x: WX / 2, z: WZ / 2, zoom: 1, armed: null, toastUntil: 0 }];
+  return [side, { cam, x: WX / 2, z: WZ / 2, zoom: 1, armed: null, toastUntil: 0, hover: null, selected: null, markerNodes: new Map() }];
 }));
 let activeSide = 'spreader';
 function updateGameCamera(side, fit = false) {
@@ -268,7 +275,7 @@ const marker = (node, hex) => {
   scene.add(m);
   return m;
 };
-const markers = [marker(sim.hospital, '#5ad1ff'), marker(sim.incident, '#ff9f1c')];
+const markers = game ? [] : [marker(sim.hospital, '#5ad1ff'), marker(sim.incident, '#ff9f1c')];
 
 // The circle shown on the table during calibration: put an object on it.
 const target = new THREE.Group();
@@ -479,6 +486,7 @@ function pushFrame(now) {
 
 addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return; // typing an hour, not a shortcut
+  if (game && e.target instanceof HTMLButtonElement && (e.key === ' ' || e.key === 'Enter')) return;
   if (game) {
     if (e.key === ' ') { e.preventDefault(); paused = !paused; }
     if (e.key === 'f') document.documentElement.requestFullscreen?.();
@@ -1050,6 +1058,7 @@ function drawSky() {
 
 function toast(side, text) {
   el(`g-toast-${side}`).textContent = text;
+  el(`g-feedback-${side}`).textContent = text;
   gameViews[side].toastUntil = performance.now() + 4000;
 }
 function doAction(side, name, p) {
@@ -1058,20 +1067,52 @@ function doAction(side, name, p) {
   const v = gameViews[side];
   if (['seed', 'party', 'sickwork', 'lockdown'].includes(name) && !p) {
     v.armed = v.armed === name ? null : name;
-    toast(side, v.armed ? `Click your map: ${ACTIONS[name]?.label || 'place patient zero'}.` : '');
+    toast(side, v.armed ? `Click your map: ${ACTIONS[name]?.label || 'place patient zero'}. Escape cancels.` : 'Selection cancelled.');
+    updateGame();
     return;
   }
   const ok = name === 'seed' ? game.seed(p.x, p.z) : game.act(name, p?.x, p?.z);
-  if (!ok) toast(side, 'Unavailable: check points/cooldown. Parties need 10 nearby people; sick work needs an infectious person.');
-  else { v.armed = null; toast(side, 'Action scheduled.'); }
+  if (!ok) toast(side, name === 'party' ? 'No party placed: need 10 people within 300m. Try a busier spot.' : name === 'sickwork' ? 'No worker selected: click within 300m of an infectious person.' : 'Unavailable: check your points or cooldown.');
+  else {
+    v.armed = null;
+    v.selected = p ? { ...p, kind: name, at: game.time } : null;
+    const event = name === 'seed' ? null : game.actionLog.at(-1);
+    if (event) event.place = p ? nearestPlace(map.labels, p.x, p.z) : 'Citywide';
+    const delay = ACTIONS[name]?.delay || 0;
+    toast(side, `${ACTIONS[name]?.label || 'Patient zero'} placed${p ? ` - ${nearestPlace(map.labels, p.x, p.z)}` : ''}. ${delay ? `Starts in ${Math.ceil(delay / 60)} simulated minutes.` : 'Active now.'}`);
+  }
+  updateGame();
 }
 const GAME_KEYS = { q: 'party', w: 'antimask', e: 'antivaxx', r: 'sickwork', i: 'lockdown', o: 'vaccines', p: 'distancing', l: 'hospitals', k: 'newvaccine' };
 if (game) {
   for (const panel of document.querySelectorAll('[data-player]')) {
     const side = panel.dataset.player;
     panel.addEventListener('pointerdown', () => { activeSide = side; });
-    for (const b of panel.querySelectorAll('[data-act]')) b.addEventListener('click', () => { doAction(side, b.dataset.act); panel.classList.remove('revealed'); panel.querySelector('[data-reveal]').setAttribute('aria-expanded', 'false'); });
+    for (const b of panel.querySelectorAll('[data-act]')) b.addEventListener('click', () => doAction(side, b.dataset.act));
     for (const b of panel.querySelectorAll('[data-zoom]')) b.addEventListener('click', () => b.dataset.zoom === 'fit' ? updateGameCamera(side, true) : zoomGame(side, Number(b.dataset.zoom)));
+    const rallyButton = panel.querySelector('[data-rally]');
+    let rallyTimer = null;
+    function rallyTap() {
+      if (paused || !game.rally(side)) return;
+      rallyButton.querySelector('.tap-reward').textContent = '+0.3';
+      updateGame();
+    }
+    function stopRally() { clearInterval(rallyTimer); rallyTimer = null; rallyButton.querySelector('.tap-reward').textContent = ''; }
+    rallyButton.addEventListener('pointerdown', e => {
+      if (e.button !== 0 || rallyButton.disabled) return;
+      activeSide = side;
+      rallyButton.setPointerCapture(e.pointerId);
+      rallyTap();
+      rallyTimer = setInterval(rallyTap, 120);
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) rallyButton.addEventListener(type, stopRally);
+    addEventListener('blur', stopRally);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) stopRally(); });
+    rallyButton.addEventListener('click', e => { if (e.detail === 0) rallyTap(); });
+    panel.querySelector('[data-repeat]').addEventListener('click', () => {
+      const selected = gameViews[side].selected;
+      if (selected) doAction(side, selected.kind === 'seed' ? 'party' : selected.kind, selected);
+    });
     const reveal = panel.querySelector('[data-reveal]');
     reveal.addEventListener('click', () => {
       const open = !panel.classList.contains('revealed');
@@ -1097,8 +1138,104 @@ if (game) {
   addEventListener('keydown', e => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement) return;
     if (GAME_KEYS[e.key]) doAction(activeSide, GAME_KEYS[e.key]);
-    if (e.key === 'Escape') { gameViews[activeSide].armed = null; toast(activeSide, ''); }
+    if (e.key === 'Escape') { gameViews[activeSide].armed = null; toast(activeSide, 'Selection cancelled.'); updateGame(); }
   });
+}
+
+const markerPoint = new THREE.Vector3();
+const SHORT_ACTION = { seed: 'Patient zero', party: 'Party: 10 people', sickwork: 'Sick worker', lockdown: 'Lockdown' };
+function screenPoint(side, x, z) {
+  const r = gameRect(side, innerWidth, innerHeight);
+  markerPoint.set(x, 0, z).project(gameViews[side].cam);
+  return { x: (markerPoint.x + 1) * r.width / 2, y: (1 - markerPoint.y) * r.height / 2 };
+}
+function focusAction(side, event) {
+  const p = event.worker || event;
+  if (!Number.isFinite(p.x) || !Number.isFinite(p.z)) return;
+  const v = gameViews[side];
+  v.x = p.x; v.z = p.z; v.zoom = Math.min(v.zoom, 1000);
+  updateGameCamera(side);
+}
+function updateActionList(side) {
+  const list = el(`g-effects-${side}`);
+  const events = ownedEvents(game, side, ACTIONS).slice(-6).reverse();
+  for (const e of events) {
+    let row = list.querySelector(`[data-event="${e.id}"]`);
+    if (!row) {
+      row = document.createElement('button');
+      row.dataset.event = e.id;
+      row.className = 'effect-row';
+      row.append(document.createElement('b'), document.createElement('span'), document.createElement('small'));
+      row.addEventListener('click', () => focusAction(side, e));
+      list.prepend(row);
+    }
+    const state = actionState(e, game.time);
+    const remaining = state.seconds === Infinity ? 'rest of round' : `${Math.ceil(state.seconds / 60)}m`;
+    row.dataset.state = state.label.toLowerCase();
+    row.children[0].textContent = `${Number.isFinite(e.x) ? '#' + e.id + ' ' : ''}${ACTIONS[e.kind].label}`;
+    row.children[1].textContent = state.label === 'Finished' ? 'Finished' : `${state.label} - ${remaining}`;
+    let detail = e.place || 'Citywide';
+    if (e.members) detail += ` | ${e.members.filter(p => p.inf === 1 || p.inf === 2).length}/10 currently infected`;
+    if (e.kind === 'vaccines') detail += ` | ${game.agents.filter(p => p.vac).length} vaccinated citywide`;
+    if (e.kind === 'hospitals' && state.label === 'Active') detail += ` | ${game.counts().iso} currently isolating`;
+    if (e.kind === 'distancing') detail += ' | contact rate -45%';
+    if (e.kind === 'antimask') detail += ' | contact rate +40%';
+    row.children[2].textContent = detail;
+  }
+  const keep = new Set(events.map(e => String(e.id)));
+  for (const row of list.children) if (!keep.has(row.dataset.event)) row.remove();
+}
+function updateGameMarkers(side) {
+  const v = gameViews[side], r = gameRect(side, innerWidth, innerHeight);
+  const layer = document.querySelector(`[data-map="${side}"]`);
+  const events = ownedEvents(game, side, ACTIONS).filter(e => Number.isFinite(e.x) && (e.until > game.time || game.time - e.until < 300));
+  if (v.selected?.kind === 'seed') events.unshift({ id: 'seed', ...v.selected, start: 0, until: Infinity });
+  const keep = new Set();
+  for (const e of events) {
+    keep.add(String(e.id));
+    let node = v.markerNodes.get(String(e.id));
+    if (!node) {
+      node = document.createElement('button');
+      node.className = `action-pin ${side}`;
+      node.append(document.createElement('b'), document.createElement('span'));
+      node.addEventListener('click', () => { activeSide = side; focusAction(side, e); });
+      node.area = document.createElement('div');
+      node.area.className = `action-area ${side}`;
+      layer.append(node.area, node);
+      v.markerNodes.set(String(e.id), node);
+    }
+    const world = e.worker || e;
+    const p = screenPoint(side, world.x, world.z);
+    node.style.left = `${p.x - node.offsetWidth / 2}px`; node.style.top = `${p.y - node.offsetHeight}px`;
+    node.hidden = p.x < 0 || p.y < 0 || p.x > r.width || p.y > r.height;
+    const state = actionState(e, game.time);
+    node.dataset.state = state.label.toLowerCase();
+    node.area.dataset.state = state.label.toLowerCase();
+    const areaSize = Math.max(14, (e.r || 0) * 2 * r.width / v.zoom);
+    Object.assign(node.area.style, { left: `${p.x - areaSize / 2}px`, top: `${p.y - areaSize / 2}px`, width: `${areaSize}px`, height: `${areaSize}px` });
+    node.area.hidden = node.hidden || !e.r;
+    node.children[0].textContent = `${e.id === 'seed' ? '' : '#' + e.id + ' '}${SHORT_ACTION[e.kind] || e.kind}`;
+    node.children[1].textContent = `${state.label}${state.seconds !== Infinity && state.seconds > 0 ? ' ' + Math.ceil(state.seconds / 60) + 'm' : ''}`;
+  }
+  for (const [id, node] of v.markerNodes) if (!keep.has(id)) { node.area.remove(); node.remove(); v.markerNodes.delete(id); }
+  const preview = layer.querySelector('.target-preview');
+  preview.hidden = !v.hover || (!v.armed && !(side === 'spreader' && game.phase === 'setup'));
+  if (!preview.hidden) {
+    const kind = v.armed || 'seed', p = screenPoint(side, v.hover.x, v.hover.z);
+    const radius = kind === 'lockdown' ? 220 : kind === 'seed' ? 70 : 300;
+    const size = radius * 2 * r.width / v.zoom;
+    preview.style.left = `${p.x - size / 2}px`; preview.style.top = `${p.y - size / 2}px`;
+    preview.style.width = `${size}px`; preview.style.height = `${size}px`;
+    preview.firstElementChild.textContent = `${SHORT_ACTION[kind]} - ${nearestPlace(map.labels, v.hover.x, v.hover.z)}`;
+  }
+}
+if (game) {
+  renderer.domElement.addEventListener('pointermove', e => {
+    const side = sideAt(e.clientX, e.clientY, innerWidth, innerHeight);
+    for (const other of SIDES) if (other !== side) gameViews[other].hover = null;
+    if (side) { activeSide = side; gameViews[side].hover = pick(e, side); }
+  });
+  renderer.domElement.addEventListener('pointerleave', () => { for (const side of SIDES) gameViews[side].hover = null; });
 }
 
 const pct = (x) => `${Math.round(x * 1000) / 10}%`;
@@ -1131,9 +1268,18 @@ function updateGame() {
     b.disabled = !game.available(a);
     b.classList.toggle('on', gameViews[action.side].armed === a);
   }
-  for (const side of SIDES) if (performance.now() > gameViews[side].toastUntil) el(`g-toast-${side}`).textContent = '';
-  drawChart();
-  drawHeat();
+  for (const side of SIDES) if (performance.now() > gameViews[side].toastUntil && !gameViews[side].armed) { el(`g-toast-${side}`).textContent = ''; el(`g-feedback-${side}`).textContent = ''; }
+  for (const side of SIDES) {
+    updateActionList(side);
+    const panel = document.querySelector(`[data-player="${side}"]`);
+    panel.querySelector('[data-rally]').disabled = game.phase !== 'running' || paused;
+    el(`g-effort-${side}`).style.width = `${(game.effort[side] % 20) * 5}%`;
+    const selected = gameViews[side].selected;
+    const kind = selected?.kind === 'seed' ? 'party' : selected?.kind;
+    const repeat = panel.querySelector('[data-repeat]');
+    repeat.disabled = !kind || !game.available(kind);
+    repeat.querySelector('small').textContent = selected ? `${SHORT_ACTION[kind] || kind} - ${nearestPlace(map.labels, selected.x, selected.z)}` : 'Choose a map location first';
+  }
   if (game.phase === 'over' && !el('g-over').classList.contains('show')) {
     el('g-win').textContent = "Time's up";
     el('g-sum').textContent = `After ${Math.round(game.time / 60)} simulated minutes: ${shared.infected} infected, ${shared.noninfected} non-infected. ${pct(c.share)} caught it during the round.`;
@@ -1197,6 +1343,35 @@ function drawHeat() {
   if (heatCells.instanceColor) heatCells.instanceColor.needsUpdate = true;
 }
 
+// Repaint the static city only when a player's camera changes.
+const gameFrameTarget = game ? new THREE.WebGLRenderTarget(innerWidth, innerHeight) : null;
+const mapCacheScene = new THREE.Scene();
+const mapCacheCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 2);
+mapCacheCamera.position.z = 1;
+const mapCacheMaterial = new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false });
+mapCacheScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mapCacheMaterial));
+function cachedMap(side, r) {
+  const v = gameViews[side];
+  const key = `${r.width}/${r.height}/${v.x}/${v.z}/${v.zoom}`;
+  if (v.cacheKey === key) return v.mapCache.texture;
+  if (!v.mapCache) v.mapCache = new THREE.WebGLRenderTarget(r.width, r.height, { depthBuffer: true });
+  else v.mapCache.setSize(r.width, r.height);
+  cityGround.visible = true; cityBuildings.visible = true;
+  for (const label of labels) label.visible = true;
+  walkers.visible = false;
+  renderer.setScissorTest(false);
+  renderer.setRenderTarget(v.mapCache);
+  renderer.setViewport(0, 0, r.width, r.height);
+  renderer.setScissor(0, 0, r.width, r.height);
+  renderer.setScissorTest(false);
+  renderer.clear();
+  renderer.render(scene, v.cam);
+  renderer.setRenderTarget(gameFrameTarget);
+  walkers.visible = true;
+  v.cacheKey = key;
+  return v.mapCache.texture;
+}
+
 // ---------- frame loop ----------
 
 function advance(simSeconds) {
@@ -1206,7 +1381,7 @@ function advance(simSeconds) {
   const zones = game ? game.lockdowns.filter(z => (z.start || 0) <= game.time && z.until > game.time) : [];
   const blobs = mouse.blobs.concat(zones, follower ? remote : planning ? [] : external.map(fromTable));
   sim.setBlobs(blobs);
-  const n = Math.ceil(simSeconds / MAX_STEP);
+  const n = Math.ceil(simSeconds / (game ? GAME_STEP : MAX_STEP));
   for (let k = 0; k < n; k++) stepAll(simSeconds / n);
   return blobs;
 }
@@ -1215,18 +1390,16 @@ function draw(dt, blobs) {
   metricsTimer -= dt;
   if (metricsTimer <= 0) {
     metricsTimer = 0.25;
-    updateMetrics();
-    drawJams();
     if (game) updateGame();
+    else { updateMetrics(); drawJams(); }
   }
-  drawSky();
-  drawVehicles(dt, sim.time);
-  drawPeople();
-  drawClosures();
-  drawPlan();
-  drawRoute(sim.time);
-  drawOverlays(blobs, sim.time);
+  if (!game) {
+    drawSky(); drawVehicles(dt, sim.time); drawPeople(); drawClosures();
+    drawPlan(); drawRoute(sim.time); drawOverlays(blobs, sim.time);
+  }
   if (game) {
+    gameFrameTarget.setSize(innerWidth, innerHeight);
+    renderer.setRenderTarget(gameFrameTarget);
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, innerWidth, innerHeight);
     renderer.clear();
@@ -1236,14 +1409,27 @@ function draw(dt, blobs) {
     for (const side of SIDES) {
       const r = gameRect(side, innerWidth, innerHeight);
       const y = innerHeight - r.y - r.height;
+      closedStrips.visible = false;
+      drawOverlays([], sim.time);
+      updateGameMarkers(side);
+      const labelSize = (gameViews[side].zoom / r.width) * 13;
+      for (const label of labels) label.scale.set(labelSize * label.userData.aspect, labelSize, 1);
+      mapCacheMaterial.map = cachedMap(side, r);
+      renderer.setScissorTest(true);
       renderer.setViewport(r.x, y, r.width, r.height);
       renderer.setScissor(r.x, y, r.width, r.height);
-      closedStrips.visible = side === 'curber';
-      drawOverlays(privateOverlays(game, side), sim.time);
+      renderer.render(mapCacheScene, mapCacheCamera);
+      cityGround.visible = false; cityBuildings.visible = false;
+      for (const label of labels) label.visible = false;
       drawPeople(gameViews[side].zoom / r.width);
       renderer.render(scene, gameViews[side].cam);
     }
+    renderer.setRenderTarget(null);
+    renderer.setViewport(0, 0, innerWidth, innerHeight);
+    renderer.setScissor(0, 0, innerWidth, innerHeight);
     renderer.setScissorTest(false);
+    mapCacheMaterial.map = gameFrameTarget.texture;
+    renderer.render(mapCacheScene, mapCacheCamera);
   } else renderer.render(scene, camera());
 }
 
@@ -1258,8 +1444,7 @@ function frame(now) {
   if (game?.phase === 'running' && !paused) roundTime += dt;
   const blobs = advance(paused ? 0 : dt * SPEEDS[speed]);
   draw(dt, blobs);
-  tellScreens(blobs, now);
-  pushFrame(now);
+  if (!game) { tellScreens(blobs, now); pushFrame(now); }
   requestAnimationFrame(frame);
 }
 el('loading').remove();
@@ -1267,6 +1452,9 @@ requestAnimationFrame(frame);
 
 window.table = {
   game,
+  get playerViews() {
+    return Object.fromEntries(SIDES.map(side => [side, { x: gameViews[side].x, z: gameViews[side].z, zoom: gameViews[side].zoom }]));
+  },
   setBlobs(list) {
     external = list;
   },

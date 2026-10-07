@@ -52,6 +52,9 @@ export class Outbreak {
     // Tuned so an unchecked outbreak sweeps much of the city in about 90 simulated minutes (3 minutes at 30x).
     this.base = { beta: 0.1, reach: 18, incubation: 90, infectious: 1800 };
     this.effects = [];
+    this.actionLog = [];
+    this.rallyAt = { spreader: -Infinity, curber: -Infinity };
+    this.effort = { spreader: 0, curber: 0 };
     this.parties = [];
     this.ready = {};
     this.vaccineEfficacy = 0.65;
@@ -99,6 +102,14 @@ export class Outbreak {
     return true;
   }
 
+  rally(side) {
+    if (this.phase !== 'running' || !Object.hasOwn(this.points, side) || this.time - this.rallyAt[side] < 3) return false;
+    this.rallyAt[side] = this.time;
+    this.effort[side]++;
+    this.points[side] += 0.3;
+    return true;
+  }
+
   active(kind) {
     return this.effects.some(e => e.kind === kind && e.start <= this.time && e.until > this.time);
   }
@@ -128,7 +139,12 @@ export class Outbreak {
     this.spend(a.side, a.cost);
     this.ready[kind] = this.time + a.cooldown;
     const start = this.time + a.delay;
-    this.effects.push({ kind, start, until: start + a.duration });
+    const event = { id: this.actionLog.length + 1, kind, start, until: start + a.duration,
+      placed: this.time, x, z, r: kind === 'lockdown' ? 220 : kind === 'party' ? 35 : 0 };
+    if (kind === 'party') event.members = members;
+    if (kind === 'sickwork') event.worker = members[0];
+    this.effects.push(event);
+    this.actionLog.push(event);
     if (kind === 'party') this.parties.push({ members, x, z, until: start + a.duration });
     if (kind === 'sickwork') {
       members[0].workUntil = start + a.duration;

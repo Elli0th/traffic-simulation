@@ -50,12 +50,12 @@ export class People {
     agent.s = this.rand() * this.edges[agent.edge].len;
   }
 
-  step(dt) {
+  step(dt, outPolicy = null) {
     const { sim, edges } = this;
     const time = sim.time;
     const busy = 0.15 + 0.85 * demandAt(sim.clock / 3600);
     for (const p of this.agents) {
-      p.out = p.threshold < busy;
+      p.out = outPolicy ? outPolicy(p, p.threshold < busy) : p.threshold < busy;
       if (!p.out) continue;
       let e = edges[p.edge];
 

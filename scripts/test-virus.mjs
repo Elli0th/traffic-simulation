@@ -62,6 +62,7 @@ function run(hours, act) {
   return { ...w.game.counts(), phase: w.game.phase, rows, t: w.game.time };
 }
 
+if (!process.argv.includes('--actions-only')) {
 check('nothing spreads before the first seed', () => {
   const w = world();
   for (let t = 0; t < 600; t++) w.step(1);
@@ -85,6 +86,8 @@ check('a lockdown and vaccination slow it', () => {
   console.log('   ', held.rows.join('  '));
   assert.ok(held.ever < free.ever, `${held.ever} vs ${free.ever}`);
 });
+
+}
 
 function fixture(n = 20) {
   const agents = Array.from({ length: n }, (_, k) => ({ x: k, z: 0, out: true, threshold: 0.5 }));
@@ -190,6 +193,22 @@ check('antimask increases cases and antivaxx reduces vaccine uptake', () => {
   const baseline = scenario();
   assert.ok(scenario('antimask').ever > baseline.ever);
   assert.ok(scenario('antivaxx').vaccinated < baseline.vaccinated);
+});
+
+check('rapid taps reward only their owner and respect the rate limit', () => {
+  const g = fixture();
+  assert.ok(g.rally('spreader'));
+  assert.equal(g.rally('spreader'), false);
+  assert.equal(g.points.spreader, 1000.3);
+  assert.equal(g.points.curber, 1000);
+  g.time += 3;
+  assert.ok(g.rally('spreader'));
+  assert.ok(g.rally('curber'));
+  assert.equal(g.effort.spreader, 2);
+  assert.equal(g.effort.curber, 1);
+  g.phase = 'over';
+  g.time += 3;
+  assert.equal(g.rally('curber'), false);
 });
 
 check('ended games stop advancing', () => {

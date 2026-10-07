@@ -36,23 +36,42 @@ scroll zoom and right-drag pan. Actions target only their owner's map; selecting
 side never arms the other side. The top bar spans both sides and shows current infected (exposed
 plus infectious) and non-infected (susceptible plus recovered) totals. All people use red/green dots,
 including people currently indoors. Isolation and vaccination status are not revealed by dot colour.
-Only the Spreader sees party markers; only the Curber sees lockdown rings/closures. No opponent
+Only the Spreader sees party/worker pins; only the Curber sees lockdown pins and zones. No opponent
 action announcements are shown. Points, action buttons and cooldowns sit in covered panels; click
-Show / hide to open your panel, which closes when you choose an action. Only one panel opens at a time.
+Show / hide to open your panel. It stays open for rapid actions; only one panel opens at a time.
 A shared screen still lets someone physically look across; this is visual separation, not secure device privacy.
 Click a busy street to place four initial exposed people for free.
-The round runs three real minutes; at 30? that is 90 simulated minutes. All action timings below
+Hover before placement to see a dashed target area and nearest named landmark. Placed actions get
+numbered pins and colour-coded areas: dashed for pending, solid for active, faded for finished.
+My actions & effects shows countdowns, party infection counts and citywide vaccination/isolation
+progress. Click a pin or a local action row to zoom to its location. Repeat here reuses the last map
+location, respecting its action's cost and cooldown. Immediate click confirmation is distinct from
+the simulated delay before an intervention begins.
+
+Spreader can Rally supporters; Curber can Mobilise volunteers. Tap rapidly or hold to earn 0.3 points
+per accepted tap, capped at one reward every 3 simulated seconds per player (about 10 taps/sec at
+30x). The effort bar fills over 20 taps. Rewards stop when paused or the round ends, and never bypass
+an action's cooldown. Both players use the same reward rules.
+
+Outbreak mode uses a pedestrian/crossing-signal loop with quarter-second movement steps. It omits
+road-vehicle and transit simulation, decorative trees and expensive traffic metrics; the normal
+traffic simulation remains at `/`. Locked-down and isolated people stop moving. Rendering uses
+one pixel per CSS pixel and larger infection dots for clarity. Each player's static city image is cached
+until zoom, pan or resize changes their camera; ordinary frames only redraw moving people. Compare the loops with
+`node scripts/benchmark-game.mjs`; focused action tests use `node scripts/test-virus.mjs --actions-only`.
+
+The round runs three real minutes; at 30x that is 90 simulated minutes. All action timings below
 use simulated time. This is an accelerated fictional game model, not a prediction for any disease.
 
 | Player / key | Action | Delay | Effect / duration |
 | --- | --- | --- | --- |
 | Spreader Q + click | Start a party (10 pax) | Immediate | Ten nearest people within 300m; extra group contacts for 10m |
-| Spreader W | Antimask conspiracy | 5m | Contact transmission ?1.4 for 30m |
+| Spreader W | Antimask conspiracy | 5m | Contact transmission x1.4 for 30m |
 | Spreader E | Antivaxx conspiracy | 5m | Vaccine acceptance falls from 85% to 25% for 40m |
 | Spreader R + click | Send someone sick to work | Immediate | Nearest infectious person within 300m stays outside and evades isolation for 15m; lockdown still applies |
 | Curber I + click | Lockdown | 1m | 220m zone keeps 90% of people home for 30m and cancels party contacts there |
 | Curber O | Free vaccines | 2m | Citywide rollout for 30m; each unvaccinated person has an 85% / 600 per-second uptake chance (25% / 600 during antivaxx) |
-| Curber P | Social distancing | 1m | Ordinary transmission ?0.55 and party transmission ?0.45 for 30m |
+| Curber P | Social distancing | 1m | Ordinary transmission x0.55 and party transmission x0.45 for 30m |
 | Curber L | New hospitals | 10m | Permanent 0.3% per-second chance of isolating each infectious person |
 | Curber K | New vaccine | 20m | Permanent improvement from 65% to 90% susceptibility reduction for vaccinated people |
 
@@ -61,7 +80,7 @@ still catch and transmit infection. A party adds a hazard of 0.004 per infectiou
 (about 21% risk over one minute with one infectious attendee, before protection/distancing).
 Ordinary close contact uses a hazard of 0.1 per second within 18m. These intentionally accelerated
 rates depend on the actual crowd, movement and interventions; they are not fixed citywide infection rates.
-Incubation averages 90 seconds; infectious duration averages 30m, both with ?30% variation.
+Incubation averages 90 seconds; infectious duration averages 30m, both with +/-30% variation.
 Recovered people are immune for the round. Hospitals represent isolation capacity, not deaths or treatment outcomes.
 Action costs, delays, durations and cooldowns are in `ACTIONS` in `src/virus.js`.
 
