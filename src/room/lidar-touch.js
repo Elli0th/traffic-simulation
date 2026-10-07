@@ -42,11 +42,16 @@ export class LidarTouchController {
     };
     this.clusterRadius = options.clusterRadius || 80.0; // mm
     this.minPoints = options.minPoints || 2;
-    // How long a touch may last and still be a tap, and how long it may go unseen before it is over.
-    // (They were 1 second and 200 ms: a slow, deliberate press on the table was thrown away as too
-    // long, and one missed sweep too many cut a press in two.)
+    // How long a touch may last and still be a tap (it was 1 second: a slow, deliberate press on the
+    // table was thrown away as too long), and how long it may go unseen before it is over. The lidar
+    // sweeps ten times a second, so 120 ms allows one missed sweep and the tap comes 0.2 s after the
+    // finger lifts (it was 0.3 s).
     this.maxTap = options.maxTap || 3000; // ms
-    this.gap = options.gap || 350; // ms
+    this.gap = options.gap || 120; // ms
+    // A press that two missed sweeps cut in two would be two taps: a second one this near the first,
+    // this soon after it, is the same press and is dropped.
+    this.sameTap = { mm: 80, ms: 600 };
+    this.lastTaps = []; // { x, y, at }
     this.onTap = options.onTap || null; // (side, u, v, screenX, screenY) => void
     this.activeTouches = new Map(); // id -> { id, u, v, side, startTime, x, y }
     this.ws = null;
@@ -279,6 +284,10 @@ export class LidarTouchController {
   }
 
   handleTap(touch) {
+    const now = performance.now();
+    this.lastTaps = this.lastTaps.filter((t) => now - t.at < this.sameTap.ms);
+    if (this.lastTaps.some((t) => Math.hypot(t.x - touch.x, t.y - touch.y) < this.sameTap.mm)) return;
+    this.lastTaps.push({ x: touch.x, y: touch.y, at: now });
     const screenX = touch.u * window.innerWidth;
     const screenY = touch.v * window.innerHeight;
 
