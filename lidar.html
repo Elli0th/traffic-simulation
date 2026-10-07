@@ -225,7 +225,7 @@
             </select>
           </label>
           <div id="remote">
-            <label class="wide">Address <input id="url" type="text" placeholder="/room-api/lidar" /></label>
+            <label class="wide">Address <input id="url" type="text" placeholder="ws://pi-lidar.local/scan" /></label>
           </div>
           <label>Every <input id="interval" type="range" min="40" max="500" step="10" /><output for="interval"></output></label>
           <div class="row"><button id="connect" class="main">Connect</button></div>
@@ -235,7 +235,7 @@
           <legend>Table</legend>
           <div class="row" style="margin-top: 0"><button id="empty">Capture the empty table</button></div>
           <label>Nearer by <input id="margin" type="range" min="20" max="300" step="10" /><output for="margin"></output></label>
-          <label class="tick"><input id="objects" type="checkbox" /> Things that stand still close streets (leave off if the depth camera does this)</label>
+          <label class="tick"><input id="objects" type="checkbox" /> Things that stand still close streets</label>
         </fieldset>
 
         <fieldset>

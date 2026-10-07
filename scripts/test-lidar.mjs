@@ -93,6 +93,35 @@ check('scan messages in other shapes are understood', () => {
   assert.equal(a.ranges[1], 2000);
   const b = decodeScan([{ angle: 0, distance: 1500 }, { angle: 90, distance: 800 }]);
   assert.ok(Math.abs(b.angles[1] - Math.PI / 2) < 1e-6 && b.ranges[1] === 800);
+  const c = decodeScan({ t: 1791374400123, points: [{ angle: 0, distance: 742, quality: 47 }, { angle: 180, distance: 0, quality: 0 }] });
+  assert.ok(c.ranges[0] === 742 && c.ranges[1] === 0 && Math.abs(c.angles[1] - Math.PI) < 1e-6);
+});
+
+// The room's lidar: all the way round, 0.72° apart, angles that drift from sweep to sweep.
+const sweep = (things, shift) => {
+  const points = [];
+  for (let deg = shift; deg < 360; deg += 0.72) {
+    const a = (deg * Math.PI) / 180;
+    let distance = 2400;
+    for (const o of things) {
+      const along = o.x * Math.cos(a) + o.y * Math.sin(a);
+      const off2 = o.x * o.x + o.y * o.y - along * along;
+      if (along > 0 && off2 < o.r * o.r) distance = Math.min(distance, along - Math.sqrt(o.r * o.r - off2));
+    }
+    points.push({ angle: deg, distance: Math.round(distance), quality: 47 });
+  }
+  return decodeScan({ t: 0, points });
+};
+const round = new ScanDetector();
+round.setBackground(Array.from({ length: 12 }, (_, k) => sweep([], k * 0.06)));
+check('the room lidar: an empty table shows nothing, whatever the angles', () => {
+  for (let k = 0; k < 30; k++) assert.equal(round.detect(sweep([], k * 0.023)).length, 0);
+});
+check('the room lidar: a hand across the 0° seam is one thing', () => {
+  const seen = round.detect(sweep([{ x: 600, y: 0, r: 40 }, { x: -300, y: 500, r: 12 }], 0.31));
+  assert.equal(seen.length, 2);
+  const hand = seen.find((b) => b.x > 0);
+  assert.ok(Math.hypot(hand.x - 600, hand.y) < 30, `hand at ${hand.x}, ${hand.y}`);
 });
 
 console.log(`\n${passed} checks passed`);

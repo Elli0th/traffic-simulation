@@ -142,10 +142,22 @@ address it prints (for example `http://192.168.0.117:5173`). Other machines use 
 
 ### Setting up, in order
 
-1. **Get the table picture onto the projector.** If the projector's computer can open a web page, open
-   the table address there. If it only accepts pictures, open the table on your laptop with
-   `/?push=<address>&fps=8`, which sends each frame as a JPEG; adjust `pushFrame` in `src/main.js` to
-   the request the room expects.
+1. **Get the pictures onto the displays.** Join the room wifi (`AID-Hackathon-5G`) and, during your
+   slot, run
+   ```bash
+   npm run room show
+   ```
+   It asks the projector to open the table page and both TVs to open the 3D view, from this laptop's
+   address on the room network. `npm run room show draw` shows the light painting, `npm run room show
+   map=west` the larger map, `npm run room status` what each display is showing, and `npm run room
+   idle` hands them back. `ROOM=sim` in front talks to the virtual room (Docker) instead.
+
+   If a display's own browser is too slow for the city, render it on the laptop: open the table with
+   `/?push=ws://pi-projector.local/frames` (TVs: `/?view=screen&push=ws://pi-tv-1.local/frames`) and
+   keep that window visible. Each frame goes to the display as a JPEG; `&fps=20` sets the rate. A
+   window about 1280 × 800 keeps it within what the wifi carries.
+   The room has a colour webcam, not a depth camera, so steps 2 to 5 below (the camera page) only
+   apply with a depth camera of your own. In the room, objects come from the lidar: see Hands below.
 2. **Connect the camera.** On the camera page choose the source, enter the address of the depth frames
    and press Connect. You should see the table from above in grey.
 3. **Capture the empty table.** Clear the table and press the button. Redo this if the table or
@@ -161,17 +173,20 @@ changes which streets an object covers. Around 1 km across works well for cups.
 
 ### Hands: moving the map with the lidar
 
-The lidar on the table's long edge sweeps just above the surface, so it sees hands reaching over.
-On the lidar page, connect, capture the empty table and calibrate the same way as the camera, but
-by holding a finger on each glowing circle. Then:
+The lidar on the table's back edge sweeps about 3 cm above the surface, so it sees hands reaching
+over and anything standing on the table. On the lidar page choose "WebSocket stream" (the address is
+already `ws://pi-lidar.local/scan`; `ws://localhost:8024/scan` in the virtual room), connect, capture
+the empty table and calibrate by holding a finger on each glowing circle. Then:
 
 - **One hand moving** drags the map.
 - **Two hands moving apart or together** zoom in or out.
-- **Anything that stays still for a second** is treated as an object and does not move the map.
+- **Anything that stays still for a second** is treated as an object: it does not move the map, and
+  it closes the street under it (untick "Things that stand still close streets" to turn that off).
 
-The page expects sweeps as JSON, either `{ angle_min, angle_increment, ranges }` or a list of
-`{ angle, distance }`. `decodeScan` in `src/room/scan.js` is the one place to change if the room's
-lidar sends something else. If the lidar is not at the top edge, calibration takes care of it.
+The page reads the room's sweeps, `{ t, points: [{ angle, distance, quality }] }`, and also
+`{ angle_min, angle_increment, ranges }` or a bare list of `{ angle, distance }`; `decodeScan` in
+`src/room/scan.js` is where that happens. Wherever the lidar sits and whichever way its 0° points,
+calibration takes care of it. If it is moved, capture the empty table and calibrate again.
 
 ### If the camera's API is not what the page expects
 
