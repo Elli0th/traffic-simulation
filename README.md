@@ -103,7 +103,36 @@ the map: the clock, the shared totals, how close each side is to winning, the cu
 grid of where the virus is, not either player's private panel. To rehearse without the room, use the camera
 page's pretend table.
 
-## Planning a change
+### Reactive Philips Hue Lighting & Asymmetric TV Dashboards
+
+When running `?game`, the installation connects to the room's physical displays and Philips Hue bridge:
+
+1. **Reactive Philips Hue Ceiling Spots & TV Strips** (`src/room/hue-lights.js`):
+   - **Ceiling Spots (2–7)**: As the virus spreads, lights dynamically transition from calm clinic cyan (`hue ~ 40000`, brightness 70) through cautionary amber into intense, glaring emergency crimson (`hue ~ 0`, brightness 254).
+   - **TV 1 Strip (Light 1 - Spreader)**: Red/Orange glow that pulses to maximum brightness (254) whenever a super-spreader party or offensive conspiracy is launched.
+   - **TV 2 Strip (Light 8 - Curber)**: Protective cyan/blue shield that brightens as lockdowns and vaccination coverage expand.
+
+2. **Asymmetric Tactical Dashboards on Both Televisions** (`/dashboard.html`):
+   - **Television 1 (Spreader Strategic Command)**:
+     - **Recent Actions Feed**: Displays your last offensive strike with active countdown timer alongside enemy countermeasures detected.
+     - **Actionable Intel**: Ranks top 3 high-density unprotected districts (e.g. Nordstaden, Inom Vallgraven, Haga) to strike next.
+     - **Transit Vectors**: Tracks trams carrying infected passengers spreading the virus across the city.
+     - **Action Deck**: Real-time points, cooldown counters, and tactical recommendations.
+   - **Television 2 (Curber Public Health Defense)**:
+     - **Recent Actions Feed**: Displays your last quarantine/vaccine deployment alongside detected outbreak breaches.
+     - **Actionable Intel**: Pinpoints top active infection hotspots requiring immediate lockdown or contact tracing.
+     - **Healthcare Stress**: Tracks hospital bed capacity and ICU saturation level.
+     - **Vaccination Campaign**: Population immunity progress and disinformation resistance tracking.
+     - **Intervention Deck**: Real-time points, cooldown counters, and defensive recommendations.
+
+3. **Room Automation Command** (`scripts/room-virus.mjs`):
+   ```bash
+   # Point Table to ?game, TV 1 to Spreader Dashboard, TV 2 to Curber Dashboard
+   node scripts/room-virus.mjs show
+
+   # Reset all displays to idle and restore Hue lights to neutral ambient
+   node scripts/room-virus.mjs idle
+   ```
 
 The panel at the top right of the table window turns the map into a what-if tool. Choose a tool, then
 click a street (or, with the depth camera running, put an object on it):

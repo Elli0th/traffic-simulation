@@ -9,6 +9,8 @@ import { Outbreak, ACTIONS, TAKEOVER, DAY } from './virus.js';
 import { SIDES, gameRect, sideAt, ownsAction, privateOverlays, publicCounts } from './game-view.js';
 import { startTablePlay } from './virus-table.js';
 import * as relay from './room/relay.js';
+import { VirusLighting } from './room/hue-lights.js';
+import { buildDashboardPayload } from './room/dashboard-data.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
 const MAX_STEP = 0.12; // longest simulation step, in seconds, that keeps the driving model stable
@@ -44,7 +46,12 @@ if (params.has('game')) for (const p of people.agents) pointAt(people.edges[p.ed
 
 // ?game turns the table into a two-player outbreak: one player spreads a virus, the other curbs it.
 const game = gameMode ? new Outbreak(people, { sim, trams }) : null;
-if (game) document.body.classList.add('game');
+const lighting = gameMode ? new VirusLighting() : null;
+const actionHistory = [];
+if (game) {
+  document.body.classList.add('game');
+  window.addEventListener('beforeunload', () => lighting?.restoreNeutral());
+}
 
 function stepAll(dt) {
   sim.step(dt);
@@ -1071,7 +1078,23 @@ function doAction(side, name, p) {
   }
   const ok = name === 'seed' ? game.seed(p.x, p.z) : game.act(name, p?.x, p?.z);
   if (!ok) toast(side, 'Unavailable: check points/cooldown. Parties need 10 nearby people; sick work needs an infectious person.');
-  else { v.armed = null; toast(side, 'Action scheduled.'); }
+  else {
+    v.armed = null;
+    toast(side, 'Action scheduled.');
+    const actRecord = {
+      side,
+      name,
+      label: name === 'seed' ? 'Place Patient Zero' : ACTIONS[name]?.label || name,
+      x: p?.x,
+      z: p?.z,
+      gameTime: game.time,
+      realTime: Date.now(),
+      duration: ACTIONS[name]?.duration || 0,
+    };
+    actionHistory.push(actRecord);
+    relay.send('action', actRecord);
+    lighting?.update(game, true);
+  }
 }
 const GAME_KEYS = { q: 'party', w: 'antimask', e: 'antivaxx', r: 'sickwork', i: 'lockdown', o: 'vaccines', p: 'distancing', l: 'hospitals', k: 'newvaccine' };
 if (game) {
@@ -1146,6 +1169,14 @@ function updateGame() {
   for (const side of SIDES) if (performance.now() > gameViews[side].toastUntil) el(`g-toast-${side}`).textContent = '';
   drawChart();
   drawHeat();
+
+  // Update dynamic Hue lighting based on virus spread
+  lighting?.update(game);
+
+  // Broadcast tactical payload to TV dashboards
+  const dashPayload = buildDashboardPayload(game, actionHistory, roundTime);
+  if (dashPayload) relay.send('game_sync', dashPayload);
+
   if (game.phase === 'over' && !el('g-over').classList.contains('show')) {
     if (!game.winner) game.finish();
     el('g-win').textContent = `${game.winner === 'spreader' ? 'The Spreader wins' : 'The Curber wins'}: ${game.reason}`;
