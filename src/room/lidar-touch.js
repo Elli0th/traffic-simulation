@@ -1,21 +1,12 @@
 // Real-time RPLIDAR C1 touch engine for the projected table.
 // Ingests sweeps, extracts hand touch clusters, converts coordinates with projector alignment,
 // and maps touches to player actions (Left = Spreader, Right = Curber) with visual ripple feedback.
+//
+// This is the virus-game branch's engine: the table's place in front of the lidar is a fixed box, so
+// there is nothing to calibrate (the [ ] { } keys nudge it by 10 mm), and a tap is a touch that comes
+// and goes within 80 ms to 1.2 s.
 
-import { decodeScan, ScanDetector } from './scan.js';
-import { applyHomography } from './homography.js';
-
-const MAP_KEY = 'lidar_to_table';
-const EMPTY_KEY = 'lidar_empty_table';
-// How sure the table must be before it acts. The lidar sees anything that crosses its plane, sleeves
-// and passing arms included, so a click has to be confirmed by staying there.
-const DWELL = 0.9; // seconds a finger or a piece stays put before that counts as a click (?hold=)
-const TAP_SIGHTINGS = 3; // sweeps a tap must be seen in, after the three it takes to be noticed: half a second of touch
-const TAP_WIDTH = 160; // millimetres: a tap is a finger or a hand, not a forearm
-const DWELL_WIDTH = 70; // millimetres: wider than this is a hand or an arm resting, which clicks nothing
-const DWELL_SLACK = 25; // millimetres it may wander while staying put
-const GONE = 300; // milliseconds unseen before a touch has lifted
-const TAP_SLACK = 50; // millimetres a tap may slide between touching and lifting
+import { decodeScan } from './scan.js';
 
 export class LidarTouchController {
   constructor(options = {}) {
@@ -48,35 +39,14 @@ export class LidarTouchController {
       minY: 150.0,
       maxY: 1050.0,
     };
-    // The four-point calibration made on the lidar page (lidar.html), when that page has sent it: it
-    // allows for the lidar being turned or off-centre, which the fixed box above cannot. Kept between
-    // openings; the box and its nudge keys are what is used until one arrives.
-    this.toTable = null;
-    try {
-      const kept = JSON.parse((typeof localStorage !== 'undefined' && localStorage.getItem(MAP_KEY)) || 'null');
-      if (Array.isArray(kept) && kept.length === 9) this.toTable = kept;
-    } catch {}
-    // The empty table as the lidar page captured it. With it, the same detector as on that page finds
-    // what is over the table, so dents and edges it has learned are not mistaken for fingers.
-    this.detector = null;
-    this.dwell = options.dwell ?? (urlParams?.get('dwell') !== '0');
-    this.hold = Number(options.hold ?? urlParams?.get('hold')) || DWELL;
-    try {
-      const kept = JSON.parse((typeof localStorage !== 'undefined' && localStorage.getItem(EMPTY_KEY)) || 'null');
-      if (kept) this.setEmptyTable(kept.background, kept.margin);
-    } catch {}
     this.clusterRadius = options.clusterRadius || 80.0; // mm
     this.minPoints = options.minPoints || 2;
     this.onTap = options.onTap || null; // (side, u, v, screenX, screenY) => void
-    this.onEvent = options.onEvent || null; // (what, data) => void: every touch and click, for the record
     this.activeTouches = new Map(); // id -> { id, u, v, side, startTime, x, y }
     this.ws = null;
     this.connected = false;
     this.nextId = 1;
     this.touchRipples = []; // { x, y, r, alpha, color }
-    this.clickedAt = []; // where held fingers have just clicked: { x, y, until }
-    this.glimpses = []; // what the last sweep saw before anything was confirmed: [[u, v], ...]
-    this.flashes = []; // clicks, shown for a moment: { x, y, text, color, born }
 
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', (e) => this.handleKeyCalibration(e));
@@ -108,42 +78,6 @@ export class LidarTouchController {
       this.feedbackUntil = performance.now() + 2500;
       console.log(`[LidarTouch] Calibration updated: Y=${this.yOffset}mm, X=${this.xOffset}mm`);
     }
-  }
-
-  // H is the lidar page's homography from its own millimetres (x = r cos a, y = r sin a) to the picture.
-  setCalibration(H) {
-    if (!Array.isArray(H) || H.length !== 9 || !H.every(Number.isFinite)) return;
-    if (!this.toTable) {
-      this.feedbackText = 'Lidar: using the calibration from the lidar page';
-      this.feedbackUntil = performance.now() + 2500;
-    }
-    this.toTable = H;
-    try { localStorage.setItem(MAP_KEY, JSON.stringify(H)); } catch {}
-  }
-
-  // background: [[direction, millimetres], ...] as ScanDetector keeps it; margin in millimetres.
-  setEmptyTable(background, margin = 60) {
-    if (!Array.isArray(background) || !background.length) return;
-    this.detector ||= new ScanDetector();
-    this.detector.background = new Map(background);
-    this.detector.margin = Number(margin) || 60;
-    try { localStorage.setItem(EMPTY_KEY, JSON.stringify({ background, margin })); } catch {}
-  }
-
-  // True once taps are placed by the lidar page's calibration and empty table.
-  get calibrated() {
-    return Boolean(this.toTable && this.detector);
-  }
-
-  // Where a point (in this file's millimetres: x = r sin a, y = r cos a) is on the picture, 0 to 1 each way.
-  place(x, y) {
-    if (this.toTable) return applyHomography(this.toTable, y, x);
-    const minX = this.tableBounds.minX + this.xOffset;
-    const maxX = this.tableBounds.maxX + this.xOffset;
-    const minY = this.tableBounds.minY + this.yOffset;
-    const maxY = this.tableBounds.maxY + this.yOffset;
-    // Horizontally inverted mapping for ceiling projector alignment:
-    return [1.0 - (x - minX) / (maxX - minX), (y - minY) / (maxY - minY)];
   }
 
   start() {
@@ -196,21 +130,7 @@ export class LidarTouchController {
     }
   }
 
-  processScan(scan, now = performance.now()) {
-    if (this.calibrated) {
-      // The lidar page's way: whatever is nearer than the empty table, on the picture, three sweeps running.
-      this.detector.keep = (px, py) => {
-        const [u, v] = applyHomography(this.toTable, px, py);
-        return u > -0.03 && u < 1.03 && v > -0.03 && v < 1.03;
-      };
-      const seen = this.detector.detect(scan);
-      this.glimpses = seen.map((b) => applyHomography(this.toTable, b.x, b.y));
-      const blips = this.detector.steady(seen);
-      // (This file's x is the lidar page's y, and the other way round.)
-      this.updateTouches(blips.map((b) => ({ x: b.y, y: b.x, width: b.width })), now, true);
-      return;
-    }
-
+  processScan(scan) {
     const { angles, ranges } = scan;
     const candidates = [];
 
@@ -222,13 +142,6 @@ export class LidarTouchController {
       // Convert polar (angle, range) to Cartesian (x, y) relative to lidar
       const x = r * Math.sin(a);
       const y = r * Math.cos(a);
-
-      if (this.toTable) {
-        // On the picture, or within a few centimetres of its edge.
-        const [u, v] = this.place(x, y);
-        if (u > -0.03 && u < 1.03 && v > -0.03 && v < 1.03) candidates.push({ x, y });
-        continue;
-      }
 
       const minX = this.tableBounds.minX + this.xOffset;
       const maxX = this.tableBounds.maxX + this.xOffset;
@@ -248,7 +161,7 @@ export class LidarTouchController {
 
     // Cluster points into discrete hand/finger contacts
     const clusters = this.clusterPoints(candidates);
-    this.updateTouches(clusters, now, false);
+    this.updateTouches(clusters);
   }
 
   clusterPoints(points) {
@@ -286,17 +199,15 @@ export class LidarTouchController {
     return clusters;
   }
 
-  // Sets where on the picture a touch is, from a point in millimetres.
-  aim(touch, x, y) {
-    const [u, v] = this.place(x, y);
-    touch.u = Math.max(0, Math.min(1, u));
-    touch.v = Math.max(0, Math.min(1, v));
-    touch.side = touch.u < 0.5 ? 'spreader' : 'curber';
-  }
+  updateTouches(clusters) {
+    const now = performance.now();
+    const minX = this.tableBounds.minX + this.xOffset;
+    const maxX = this.tableBounds.maxX + this.xOffset;
+    const minY = this.tableBounds.minY + this.yOffset;
+    const maxY = this.tableBounds.maxY + this.yOffset;
 
-  // `steadied` is true when the clusters have already been seen three sweeps running.
-  updateTouches(clusters, now = performance.now(), steadied = false) {
     const matchedClusters = new Set();
+    const liveTouchIds = new Set();
 
     for (const [id, touch] of this.activeTouches.entries()) {
       let closestIdx = -1;
@@ -317,66 +228,47 @@ export class LidarTouchController {
         touch.x = c.x;
         touch.y = c.y;
         touch.lastSeen = now;
-        touch.sightings++;
-        touch.sumX += c.x;
-        touch.sumY += c.y;
-        touch.travel = Math.max(touch.travel, Math.hypot(c.x - touch.startX, c.y - touch.startY));
-        touch.width = Math.max(touch.width, c.width ?? Infinity);
-        this.aim(touch, c.x, c.y);
-        // Held still for a moment: a click, there and then. Lifting it afterwards is not another.
-        // (And seen in most of the sweeps since it came down: something that comes and goes is not held.)
-        const held = now - touch.startTime;
-        if (this.dwell && !touch.clicked && this.dwelling(touch) && held >= this.hold * 1000 && touch.sightings >= held / 100 * 0.7) {
-          touch.clicked = true;
-          this.aim(touch, touch.sumX / touch.sightings, touch.sumY / touch.sightings);
-          this.handleTap(touch);
+
+        // Horizontally inverted mapping for ceiling projector alignment:
+        const normU = Math.max(0, Math.min(1, 1.0 - (c.x - minX) / (maxX - minX)));
+        const normV = Math.max(0, Math.min(1, (c.y - minY) / (maxY - minY)));
+        touch.u = normU;
+        touch.v = normV;
+        touch.side = normU < 0.5 ? 'spreader' : 'curber';
+        liveTouchIds.add(id);
+      } else {
+        // Did not match; if gone for > 200ms, mark as ended tap
+        if (now - touch.lastSeen > 200) {
+          const duration = now - touch.startTime;
+          if (duration >= 80 && duration <= 1200) {
+            this.handleTap(touch);
+          }
+          this.activeTouches.delete(id);
         }
-      } else if (now - touch.lastSeen > GONE) {
-        // Gone: a tap if it touched briefly and lifted where it came down. A single stray reading, or
-        // an arm sweeping across, is not one.
-        const duration = touch.lastSeen - touch.startTime;
-        if (!touch.clicked && touch.sightings >= (steadied ? TAP_SIGHTINGS : 5) && duration <= 1000 && touch.travel <= TAP_SLACK && (touch.width <= TAP_WIDTH || !steadied)) {
-          // Where it was on average: the last sighting, as the hand lifts, is the least reliable.
-          this.aim(touch, touch.sumX / touch.sightings, touch.sumY / touch.sightings);
-          touch.tapped = true;
-          this.handleTap(touch);
-        }
-        this.onEvent?.('touch', { u: touch.u, v: touch.v, side: touch.side, mm: [Math.round(touch.x), Math.round(touch.y)], ms: Math.round(duration), sightings: touch.sightings, travel: Math.round(touch.travel), width: Number.isFinite(touch.width) ? Math.round(touch.width) : null, clicked: touch.clicked, tapped: Boolean(touch.tapped), calibrated: steadied });
-        // A finger that has clicked and then drops out of sight for a moment must not click again.
-        if (touch.clicked) this.clickedAt.push({ x: touch.x, y: touch.y, until: now + 800 });
-        this.activeTouches.delete(id);
       }
     }
-    this.clickedAt = this.clickedAt.filter((c) => c.until > now);
 
     // Add new clusters
     clusters.forEach((c, idx) => {
-      if (matchedClusters.has(idx)) return;
-      const touch = {
-        id: this.nextId++,
-        x: c.x,
-        y: c.y,
-        startX: c.x,
-        startY: c.y,
-        sumX: c.x,
-        sumY: c.y,
-        travel: 0,
-        width: c.width ?? Infinity,
-        clicked: this.clickedAt.some((o) => Math.hypot(o.x - c.x, o.y - c.y) < 60),
-        startTime: now,
-        lastSeen: now,
-        sightings: 1,
-      };
-      this.aim(touch, c.x, c.y);
-      this.activeTouches.set(touch.id, touch);
-      // Add visual ripple
-      this.addRipple(touch.u * window.innerWidth, touch.v * window.innerHeight, touch.side);
+      if (!matchedClusters.has(idx)) {
+        const normU = Math.max(0, Math.min(1, 1.0 - (c.x - minX) / (maxX - minX)));
+        const normV = Math.max(0, Math.min(1, (c.y - minY) / (maxY - minY)));
+        const id = this.nextId++;
+        const touch = {
+          id,
+          x: c.x,
+          y: c.y,
+          u: normU,
+          v: normV,
+          side: normU < 0.5 ? 'spreader' : 'curber',
+          startTime: now,
+          lastSeen: now,
+        };
+        this.activeTouches.set(id, touch);
+        // Add visual ripple
+        this.addRipple(normU * window.innerWidth, normV * window.innerHeight, touch.side);
+      }
     });
-  }
-
-  // Is this touch something narrow that is staying where it came down: a finger, or a piece?
-  dwelling(touch) {
-    return touch.width <= DWELL_WIDTH && touch.travel <= DWELL_SLACK;
   }
 
   handleTap(touch) {
@@ -384,8 +276,6 @@ export class LidarTouchController {
     const screenY = touch.v * window.innerHeight;
 
     this.addRipple(screenX, screenY, touch.side, 45);
-    this.onEvent?.('click', { kind: touch.clicked ? 'hold' : 'tap', u: touch.u, v: touch.v, side: touch.side, width: Number.isFinite(touch.width) ? Math.round(touch.width) : null });
-    this.flashes.push({ x: screenX, y: screenY, text: touch.clicked ? 'hold' : 'tap', color: touch.side === 'spreader' ? '#ff3b5c' : '#00e5a3', born: performance.now() });
 
     if (this.onTap) {
       this.onTap(touch.side, touch.u, touch.v, screenX, screenY);
@@ -406,35 +296,6 @@ export class LidarTouchController {
   // Draw touch ripple feedback over the table projection
   drawRipples(ctx) {
     if (!ctx) return;
-    const time = performance.now();
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-
-    // Faint dots: everything the lidar sees over the picture, confirmed or not.
-    ctx.fillStyle = '#ffffff';
-    ctx.globalAlpha = 0.35;
-    for (const [u, v] of this.glimpses) {
-      ctx.beginPath();
-      ctx.arc(u * W, v * H, 5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // A click: a disc that bursts outwards, with what kind of click it was.
-    this.flashes = this.flashes.filter((f) => time - f.born < 700);
-    for (const f of this.flashes) {
-      const t = (time - f.born) / 700;
-      ctx.globalAlpha = (1 - t) * 0.45;
-      ctx.fillStyle = f.color;
-      ctx.beginPath();
-      ctx.arc(f.x, f.y, 26 + t * 70, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1 - t;
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '700 22px ui-sans-serif, system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(f.text, f.x, f.y - 44 - t * 20);
-    }
-    ctx.globalAlpha = 1;
     for (let i = this.touchRipples.length - 1; i >= 0; i--) {
       const rip = this.touchRipples[i];
       rip.r += 1.8;
@@ -464,32 +325,12 @@ export class LidarTouchController {
     for (const touch of this.activeTouches.values()) {
       const sx = touch.u * window.innerWidth;
       const sy = touch.v * window.innerHeight;
-      // Too wide to be a finger or a hand: shown, greyed and dashed, so it is plain why nothing happens.
-      const ignored = Number.isFinite(touch.width) && touch.width > TAP_WIDTH;
       ctx.beginPath();
-      ctx.arc(sx, sy, ignored ? 30 : 18, 0, Math.PI * 2);
-      ctx.strokeStyle = ignored ? '#8a94a3' : touch.side === 'spreader' ? '#ff5c7c' : '#00e5a3';
-      ctx.lineWidth = ignored ? 3 : 2;
-      ctx.setLineDash(ignored ? [8, 8] : []);
+      ctx.arc(sx, sy, 18, 0, Math.PI * 2);
+      ctx.strokeStyle = touch.side === 'spreader' ? '#ff5c7c' : '#00e5a3';
+      ctx.lineWidth = 2;
       ctx.globalAlpha = 0.7;
       ctx.stroke();
-      ctx.setLineDash([]);
-      if (ignored) {
-        ctx.fillStyle = '#8a94a3';
-        ctx.font = '600 16px ui-sans-serif, system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('too wide', sx, sy + 52);
-      }
-      // A ring that fills while a finger is held still, and closes as it clicks.
-      if (this.dwell && this.dwelling(touch)) {
-        const filled = touch.clicked ? 1 : Math.min(1, (performance.now() - touch.startTime) / (this.hold * 1000));
-        ctx.beginPath();
-        ctx.arc(sx, sy, 26, -Math.PI / 2, -Math.PI / 2 + filled * Math.PI * 2);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 4;
-        ctx.globalAlpha = touch.clicked ? 0.35 : 0.9;
-        ctx.stroke();
-      }
     }
     ctx.globalAlpha = 1.0;
   }

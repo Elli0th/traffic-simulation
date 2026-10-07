@@ -1358,8 +1358,6 @@ if (game) {
   // Real-time RPLIDAR C1 touch engine for table projection. Only ?game=table: plain ?game is the mouse
   // and keyboard, and a laptop in the room must not have the table's lidar pressing its buttons.
   if (onTableGame) lidarTouch = new LidarTouchController({
-    // For the record of a slot (scripts/recorder.mjs): every touch, and what became of it.
-    onEvent: (what, data) => relay.send('record', { what, page: 'game', ...data }),
     onTap: (side, u, v, screenX, screenY) => {
       if (calibrating) return; // the finger on the calibration circle is not playing
       const under = document.elementFromPoint(screenX, screenY)?.closest('button, [data-home], [data-reveal]');
@@ -1414,10 +1412,6 @@ if (game) {
     },
   });
   lidarTouch?.start();
-  relay.on('lidar-map', (m) => {
-    lidarTouch?.setCalibration(m?.toTable);
-    lidarTouch?.setEmptyTable(m?.background, m?.margin);
-  });
 }
 
 const markerPoint = new THREE.Vector3();
@@ -1950,7 +1944,7 @@ function frame(now) {
   }
   // Once the tap touch has the lidar page's calibration it does the clicking, held fingers and pieces
   // included; the slower hold of virus-table.js would then press everything a second time.
-  tablePlay?.update(dt, lidarTouch?.calibrated && lidarTouch.dwell ? [] : external);
+  tablePlay?.update(dt, external);
   live.step();
   const blobs = advance(paused ? 0 : dt * SPEEDS[speed]);
   draw(dt, blobs);
@@ -1961,8 +1955,8 @@ function frame(now) {
       else drawCalibration(touchCtx, innerWidth, innerHeight, now, calibrating, calibrationVerdict);
     } else {
       lidarTouch?.drawRipples(touchCtx);
-      // What the lidar page registers: in the traffic view, and in the game until its own touch has a calibration.
-      if (!lidarTouch?.calibrated && (!game || onTableGame)) touchMarks.draw(touchCtx, innerWidth, innerHeight, now);
+      // What the lidar page registers, in the traffic view. The game's own touch draws its own rings.
+      if (!game) touchMarks.draw(touchCtx, innerWidth, innerHeight, now);
     }
   }
   tellScreens(blobs, now);

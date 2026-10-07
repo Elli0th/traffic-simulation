@@ -74,11 +74,12 @@ Same start as above (steps 1 and 2: the recording server, the lidar page visible
    The projector opens `/?game=table` on the menu, the TVs their dashboards. It stops with what
    to do if the wifi, the server or the lidar is not ready.
 
-2. **Calibrate on the game.** Capture the empty table, then press Calibrate on the lidar page. The
-   nine circles are drawn over the game, menu included; under 3% is good. Skip this only if the
-   table, lidar and projector have not moved since the last one.
+2. **No calibration for the game.** Its touch is the virus-game branch's: the table is a fixed box
+   in front of the lidar. If taps land off, `[` and `]` nudge them 10 mm down and up, `{` and `}`
+   left and right, with the game window in front; the nudge is remembered. (The lidar page and
+   its nine circles are still what the traffic view uses.)
 
-3. **Play.** A fingertip held still presses what is under it: the menu, the action buttons, the
+3. **Play.** A tap (a touch of 0.1 to 1.2 seconds, then lifted) presses what is under it: the menu, the action buttons, the
    power cards, Pause and Resume, End game. In a solo round the whole table is the one player's.
    The seismic trench takes two taps, its start and then its end (the mouse drags it).
    The left TV turns to the 3D city in a solo round and the right one follows the role.

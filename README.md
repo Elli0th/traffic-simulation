@@ -113,7 +113,7 @@ the buttons and click the maps. The players sit side by side, the Spreader at th
 
 | What the sensors see | What it does |
 | --- | --- |
-| A hand or object held on a button for a second | Presses it: an action, + and -, End game / Reset |
+| A tap on a button (touch for 0.1 to 1.2 seconds, then lift) | Presses it: an action, + and -, End game / Reset |
 | An object put down on your own map | Plays there. The Spreader's first one places patient zero. After that it is the action chosen on the panel, or a party (Spreader) or a lockdown (Curber) if none is chosen |
 
 Whose piece it is follows from which half of the table it stands on. A piece counts once it has
