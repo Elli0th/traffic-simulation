@@ -91,6 +91,22 @@ page: the laptop streams the finished pictures to the projector and both TVs. St
 
 4. **Hand the room back** with `npm run room idle`, then stop the server.
 
+## A sharper picture: video instead of frames
+
+Frames are single JPEGs, one after the other: heavy on the wifi, so the page has to send fewer
+pixels or a rougher picture to keep up. Video sends only what changes, so the table gets the
+projector's full 1920 × 1200 for a few megabits a second, and it stays on time.
+
+```bash
+npm run room video          # game: table and both TVs
+npm run room video table    # game: the projector only
+```
+
+Each display is given `/watch.html`, a page that does nothing but play the video, and the stream
+page opens with `via=video`. Press **Start streaming** as before. The status line says `Video:` and
+the size and megabits of what each display is being sent. Not yet tried on the real displays: if a
+display stays black, `npm run room boot` is the frames way, which is.
+
 ## Rehearsing in the virtual room
 
 The organisers' virtual room (Docker) answers like the real one and shows it in 3D.

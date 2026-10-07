@@ -9,6 +9,9 @@
 // to each display's /frames WebSocket as JPEGs: never more than 30 a second for the table, and a
 // frame is skipped rather than queued while a display still has two to receive.
 //
+//   ?via=video        send video instead of JPEG frames: each display plays it in /watch.html (see
+//                     watch.js). Sharper and far lighter on the wifi; the displays must be showing
+//                     that page (npm run room video).
 //   ?tvs=0            the table only; the TVs are left alone
 //   ?fps=20           fewer frames a second for the table (30 at most)
 //   ?tvfps=12         frames a second for each TV (12 unless said; their dashboards change slowly)
@@ -17,11 +20,14 @@
 //   ?map=west         passed on to the table page
 //   ?lights=0         passed on to the table page: the game leaves the room's Hue lights alone
 
+import * as relay from './relay.js';
+
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
 const fps = Math.min(30, Math.max(1, Number(params.get('fps')) || 30));
 const tvFps = Math.min(30, Math.max(1, Number(params.get('tvfps')) || 12));
 const tableOnly = params.get('tvs') === '0';
+const viaVideo = params.get('via') === 'video';
 document.body.classList.toggle('table-only', tableOnly);
 
 // ---------- the pictures: what each display's frame holds ----------
@@ -31,10 +37,14 @@ const extra = ['map', 'lights'].filter((k) => params.get(k)).map((k) => `&${k}=$
 const PAGES = {
   traffic: { projector: `/?nohud${extra}`, 'tv-1': `/?view=screen&nohud${extra}`, 'tv-2': `/?view=screen&nohud${extra}` },
   // tv=2 lets the right TV follow the player's role in a solo round; the left one turns to the 3D city by itself.
-  game: { projector: `/?game=table${extra}`, 'tv-1': '/dashboard.html?side=spreader', 'tv-2': '/dashboard.html?side=curber&tv=2' },
+  // pr=1.5: the game drawn at the projector's full 1920 x 1200 (see main.js).
+  game: { projector: `/?game=table&pr=1.5${extra}`, 'tv-1': '/dashboard.html?side=spreader', 'tv-2': '/dashboard.html?side=curber&tv=2' },
 };
 // The size each page is laid out at, whatever the size of this window: what the display would give it.
 const LAYOUT = { projector: [1280, 800], 'tv-1': [1280, 720], 'tv-2': [1280, 720] };
+// The most picture sent to each display: the projector's own 1920 x 1200. A TV's picture is a third of
+// this window at best, so more than 1280 across would be pixels the tab does not have.
+const SEND = { projector: [1920, 1200], 'tv-1': [1280, 720], 'tv-2': [1280, 720] };
 const KEY = 'tangible-table/stream-mode';
 
 // One per display: its frame on this page, and how its stream is doing.
@@ -61,8 +71,12 @@ const senders = [...document.querySelectorAll('.stage')]
       problem: '',
       // How much picture each frame carries. Both come down when the wifi cannot carry the frames,
       // and back up when it can: a softer picture on time is better than a sharp one late.
-      quality: Math.min(0.85, Math.max(0.3, Number(params.get('q')) || 0.7)),
-      scale: 1,
+      quality: Math.min(0.9, Math.max(0.3, Number(params.get('q')) || 0.75)),
+      // JPEG frames start at two thirds (1280 across for the table) and grow if the wifi carries it.
+      scale: viaVideo ? 1 : 0.67,
+      pc: null, // the video connection, with ?via=video
+      stream: null,
+      size: [0, 0],
     };
   });
 const view = senders[0].frame;
@@ -126,17 +140,12 @@ let capture = null; // the browser's picture of this tab
 let timer = 0;
 let trouble = ''; // why the tab could not be shared
 
-function send(s, now) {
-  if (now - s.last < 1000 / s.fps - 2) return;
-  // The display still has two to receive, or the last one is still being encoded: this frame is
-  // dropped, so the picture never falls behind.
-  if (s.encoding || s.inFlight >= 2) return;
-  s.last = now;
-  // Where this display's picture is in the picture of the tab.
+// Cuts this display's picture out of the picture of the tab, into its canvas.
+function cut(s) {
   const box = s.el.getBoundingClientRect();
   const kx = video.videoWidth / innerWidth;
   const ky = video.videoHeight / innerHeight;
-  const [fullW, fullH] = LAYOUT[s.name];
+  const [fullW, fullH] = SEND[s.name];
   // No more pixels than the tab has for it: a small window gives a soft picture, not a slow one.
   const width = Math.min(fullW, box.width * kx) * s.scale;
   const w = Math.max(2, Math.round(width / 2) * 2);
@@ -145,7 +154,22 @@ function send(s, now) {
     s.canvas.width = w;
     s.canvas.height = h;
   }
+  s.ctx.imageSmoothingQuality = 'high';
   s.ctx.drawImage(video, box.left * kx, box.top * ky, box.width * kx, box.height * ky, 0, 0, w, h);
+}
+
+function send(s, now) {
+  if (now - s.last < 1000 / s.fps - 2) return;
+  // Video: the canvas is the source of the connection's track; drawing on it is sending.
+  if (viaVideo) {
+    s.last = now;
+    return cut(s);
+  }
+  // The display still has two to receive, or the last one is still being encoded: this frame is
+  // dropped, so the picture never falls behind.
+  if (s.encoding || s.inFlight >= 2) return;
+  s.last = now;
+  cut(s);
   s.encoding = true;
   s.canvas.toBlob(
     async (blob) => {
@@ -177,16 +201,76 @@ function frame() {
   for (const s of senders) send(s, now);
 }
 
-// Once a second: is the display getting its frames? If not, send less picture; if so, send more again.
+// Once a second, for JPEG frames: is the display getting them? If not, send less picture: first fewer
+// pixels down to 1280 across, then a rougher JPEG, then fewer pixels still. If so, send more again.
+// (Video does this by itself.)
 function adapt(s) {
-  if (!capture || s.problem || params.has('q')) return;
+  if (viaVideo || !capture || s.problem || params.has('q')) return;
   if (s.rate < s.fps * 0.9) {
-    if (s.quality > 0.4) s.quality = Math.max(0.4, s.quality - 0.08);
-    else s.scale = Math.max(0.6, s.scale - 0.1);
+    if (s.scale > 0.67) s.scale = Math.max(0.67, s.scale - 0.11);
+    else if (s.quality > 0.5) s.quality = Math.max(0.5, s.quality - 0.07);
+    else s.scale = Math.max(0.4, s.scale - 0.07);
   } else if (s.rate >= s.fps * 0.97) {
-    if (s.scale < 1) s.scale = Math.min(1, s.scale + 0.05);
-    else s.quality = Math.min(0.75, s.quality + 0.02);
+    if (s.scale < 0.67) s.scale = Math.min(0.67, s.scale + 0.05);
+    else if (s.quality < 0.8) s.quality = Math.min(0.8, s.quality + 0.03);
+    else s.scale = Math.min(1, s.scale + 0.05);
   }
+}
+
+// ---------- video: one connection to each display's /watch.html ----------
+
+const tell = (to, data) => relay.send('rtc', { to, from: 'sender', ...data });
+
+async function offer(s) {
+  s.pc?.close();
+  cut(s); // the canvas has its size before the track starts
+  s.stream ||= s.canvas.captureStream(s.fps);
+  const track = s.stream.getVideoTracks()[0];
+  track.contentHint = 'detail'; // text and thin lines: keep them sharp, give up frames first
+  const pc = (s.pc = new RTCPeerConnection());
+  pc.born = performance.now();
+  const sender = pc.addTransceiver(track, {
+    direction: 'sendonly',
+    sendEncodings: [{ maxBitrate: s.name === 'projector' ? 12e6 : 4e6, maxFramerate: s.fps }],
+  });
+  // H.264 first: the laptop encodes it and a Raspberry Pi decodes it in hardware. The rest stay as a fallback.
+  try {
+    const codecs = RTCRtpSender.getCapabilities('video').codecs;
+    sender.setCodecPreferences([...codecs.filter((c) => c.mimeType === 'video/H264'), ...codecs.filter((c) => c.mimeType !== 'video/H264')]);
+  } catch {}
+  pc.onicecandidate = (e) => e.candidate && tell(s.name, { candidate: e.candidate.toJSON() });
+  pc.onconnectionstatechange = () => {
+    if (s.pc !== pc) return;
+    s.problem = pc.connectionState === 'failed' ? 'no video connection' : '';
+  };
+  await pc.setLocalDescription(await pc.createOffer());
+  tell(s.name, { sdp: pc.localDescription.toJSON() });
+}
+
+relay.on('rtc', async (m) => {
+  if (!viaVideo || m.to !== 'sender' || !capture) return;
+  const s = senders.find((x) => x.name === m.from);
+  if (!s) return;
+  if (m.ready) {
+    // A display that says it is ready while a connection is being made is left to finish it.
+    const state = s.pc?.connectionState;
+    if (state === 'connected' || ((state === 'new' || state === 'connecting') && performance.now() - s.pc.born < 6000)) return;
+    await offer(s);
+  } else if (m.sdp) await s.pc?.setRemoteDescription(m.sdp).catch(() => {});
+  else if (m.candidate) await s.pc?.addIceCandidate(m.candidate).catch(() => {});
+});
+
+// Once a second: what each connection is really sending.
+async function measure(s) {
+  if (!s.pc) return void (s.problem ||= 'waiting for its watch page');
+  for (const r of (await s.pc.getStats()).values()) {
+    if (r.type !== 'outbound-rtp' || r.kind !== 'video') continue;
+    s.rate = Math.round(r.framesPerSecond || 0);
+    s.megabits = ((r.bytesSent - (s.bytesBefore ?? r.bytesSent)) * 8) / 1e6;
+    s.bytesBefore = r.bytesSent;
+    s.size = [r.frameWidth || 0, r.frameHeight || 0];
+  }
+  if (s.pc.connectionState === 'connected') s.problem = '';
 }
 
 async function start() {
@@ -208,6 +292,7 @@ async function start() {
   video.srcObject = capture;
   await video.play().catch(() => {});
   timer = setInterval(frame, 1000 / Math.max(fps, tvFps));
+  if (viaVideo) for (const s of senders) tell(s.name, { hello: true }); // the watch pages answer that they are ready
   $('start').hidden = true;
   $('stop').hidden = false;
   describe();
@@ -217,8 +302,13 @@ function stop() {
   clearInterval(timer);
   for (const track of capture?.getTracks() || []) track.stop();
   capture = null;
-  for (const s of senders) s.problem = '';
-  fetch('/room-frame-stop', { method: 'POST' }).catch(() => {});
+  for (const s of senders) {
+    s.problem = '';
+    if (s.pc) tell(s.name, { bye: true });
+    s.pc?.close();
+    s.pc = null;
+  }
+  if (!viaVideo) fetch('/room-frame-stop', { method: 'POST' }).catch(() => {});
   $('start').hidden = false;
   $('stop').hidden = true;
   describe();
@@ -231,7 +321,8 @@ function describe() {
   else if (!capture) status.textContent = 'Not streaming. Only what is chosen on the left is running.';
   else {
     const total = senders.reduce((sum, s) => sum + s.megabits, 0);
-    status.textContent = `${senders.map((s) => (s.problem ? `${s.name}: ${s.problem}` : `${s.name} ${s.rate}/${s.fps}`)).join(' · ')} frames a second · ${total.toFixed(1)} Mbit/s`;
+    const size = (s) => (viaVideo ? s.size : [s.canvas.width, s.canvas.height]).join('×');
+    status.textContent = `${viaVideo ? 'Video' : 'Frames'}: ${senders.map((s) => (s.problem ? `${s.name}: ${s.problem}` : `${s.name} ${s.rate}/${s.fps} at ${size(s)}`)).join(' · ')} · ${total.toFixed(1)} Mbit/s`;
   }
   status.className = trouble || problems.length ? 'bad' : capture ? 'live' : '';
 }
@@ -240,6 +331,10 @@ $('start').addEventListener('click', start);
 $('stop').addEventListener('click', stop);
 setInterval(() => {
   for (const s of senders) {
+    if (viaVideo) {
+      if (capture) measure(s).catch(() => {});
+      continue;
+    }
     s.rate = s.sent;
     s.megabits = (s.bytes * 8) / 1e6;
     s.sent = 0;
@@ -256,6 +351,6 @@ window.stream = {
   stop,
   show,
   get state() {
-    return { streaming: Boolean(capture), mode: shown(), fps, tvFps, trouble, displays: senders.map((s) => ({ name: s.name, rate: s.rate, size: [s.canvas.width, s.canvas.height], quality: s.quality, problem: s.problem })) };
+    return { streaming: Boolean(capture), mode: shown(), via: viaVideo ? 'video' : 'frames', fps, tvFps, trouble, displays: senders.map((s) => ({ name: s.name, rate: s.rate, megabits: s.megabits, size: [s.canvas.width, s.canvas.height], quality: s.quality, connection: s.pc?.connectionState, problem: s.problem })) };
   },
 };

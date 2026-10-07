@@ -9,6 +9,9 @@
 //   npm run room show draw       light painting instead of the city
 //   npm run room show check      the test card on the projector only: calibration circles, rings for
 //                                what the lidar registers, crosses to try the calibration against
+//   npm run room video           the game as video: every display shows the watch page, which only plays what
+//                                the stream page sends. Sharper and lighter on the wifi than frames.
+//                                `video traffic` for the traffic view, `table` at the end for the projector only
 //   npm run room status          what each display is showing
 //   npm run room idle            hand the displays back
 //
@@ -117,8 +120,8 @@ async function serverPort() {
 // TVs run in the stream page on this laptop and are sent to the displays frame by frame. Starting the
 // stream takes a click in the browser, so this opens the page and says so; nothing reaches a display
 // until then.
-function openStream(port, mode) {
-  const page = `http://localhost:${port}/stream.html?mode=${mode}`;
+function openStream(port, mode, more = '') {
+  const page = `http://localhost:${port}/stream.html?mode=${mode}${more}`;
   try {
     const brave = '/Applications/Brave Browser.app';
     execFileSync('open', fs.existsSync(brave) ? ['-a', brave, page] : [page]);
@@ -156,10 +159,18 @@ if (action === 'boot') {
     // The traffic view, table and TVs, is streamed from this laptop too.
     openStream(port, `traffic${what.startsWith('map=') ? `&${what}` : ''}`);
   }
+} else if (action === 'video') {
+  // Video instead of JPEG frames: each display shows /watch.html, which only plays what the stream
+  // page sends it. `table` after it leaves the TVs alone.
+  const port = await serverPort();
+  const base = process.env.PAGE ?? `http://${laptop()}:${port}`;
+  const tableOnly = process.argv.includes('table');
+  for (const name of tableOnly ? ['projector'] : Object.keys(DISPLAYS)) await call(name, '/show', { url: `${base}/watch.html?display=${name}` });
+  openStream(port, what === 'traffic' ? 'traffic' : 'game', `&via=video${tableOnly ? '&tvs=0' : ''}`);
 } else if (action === 'idle' || action === 'blank') {
   for (const name of Object.keys(DISPLAYS)) await call(name, '/show', { [action]: true });
 } else if (action === 'status') {
   for (const name of Object.keys(DISPLAYS)) await call(name, '/status');
 } else {
-  console.log('Usage: npm run room [boot | show [check | game | draw | map=west] | status | idle | blank]');
+  console.log('Usage: npm run room [boot | show [check | game | draw | map=west] | video [game | traffic] [table] | status | idle | blank]');
 }

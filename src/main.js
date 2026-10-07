@@ -107,8 +107,12 @@ if (!boardOnly) for (let t = 0; t < (game ? 60 : 420); t += game ? GAME_STEP : 0
 
 // ---------- renderer, cameras, lights ----------
 
-const renderer = new THREE.WebGLRenderer({ antialias: !game, alpha: false, preserveDrawingBuffer: streaming });
-renderer.setPixelRatio(game ? 0.8 : Math.min(devicePixelRatio, 2));
+// ?pr=1.5 draws the game with that many pixels to a CSS pixel, smoothed: for the stream page, which runs
+// it on the laptop at the projector's full 1920 x 1200. Without it the game keeps the light 0.8 that
+// was chosen for a display's own small computer.
+const sharp = Math.min(3, Math.max(0, Number(params.get('pr')) || 0));
+const renderer = new THREE.WebGLRenderer({ antialias: !game || sharp > 1, alpha: false, preserveDrawingBuffer: streaming });
+renderer.setPixelRatio(game ? sharp || 0.8 : Math.min(devicePixelRatio, 2));
 renderer.localClippingEnabled = true; // lets the ground be cut off at the edge of the map
 document.body.appendChild(renderer.domElement);
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
