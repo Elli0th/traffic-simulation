@@ -44,10 +44,10 @@ CARDS = []
 def card(slug, where, title, lines, art):
     CARDS.append((slug, where, title, lines, art))
 
-card('tap', 'Outbreak game', 'Tap', ['Touch the table and lift again, within a second.', 'Presses the button there, or plays on the map there.'],
+card('tap', 'Outbreak game', 'Tap', ['Touch the table for half a second, then lift.', 'Presses the button there, or plays on the map there.'],
      ripples(400, 190, RED) + hand(400, 190) + arrow(520, 150, 520, 210, DIM, 5) + arrow(560, 210, 560, 150, DIM, 5) + label(540, 245, 'down, up'))
-card('hold', 'Outbreak game', 'Hold still', ['Keep a finger still for 0.6 seconds. No need to lift.', 'A ring fills, then it clicks: the same as a tap.'],
-     arc(400, 190, 44, 0.72) + hand(400, 190) + label(530, 198, '0.6 s', TEXT, 30, 'start', 700))
+card('hold', 'Outbreak game', 'Hold still', ['Keep a finger still for about a second. No need to lift.', 'A ring fills, then it clicks: the same as a tap.'],
+     arc(400, 190, 44, 0.72) + hand(400, 190) + label(530, 198, '1 s', TEXT, 30, 'start', 700))
 card('piece', 'Outbreak game', 'Put a piece down', ['Stand a piece on your own half of the map.', 'It plays there once. Lift it and put it back to play again.'],
      arc(400, 290, 78, 0.72) + f'<circle cx="400" cy="290" r="52" fill="{GREEN}"/><circle cx="400" cy="290" r="34" fill="none" stroke="{CARD}" stroke-width="5" opacity="0.5"/>'
      + arrow(400, 130, 400, 195, DIM, 5))
