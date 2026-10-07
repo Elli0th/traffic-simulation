@@ -264,6 +264,7 @@ export class LidarTouchController {
         touch.x = c.x;
         touch.y = c.y;
         touch.lastSeen = now;
+        touch.sightings++;
 
         const [rawU, rawV] = this.place(c.x, c.y);
         const normU = Math.max(0, Math.min(1, rawU));
@@ -276,7 +277,8 @@ export class LidarTouchController {
         // Did not match; if gone for > 200ms, mark as ended tap
         if (now - touch.lastSeen > 200) {
           const duration = now - touch.startTime;
-          if (duration >= 80 && duration <= 1200) {
+          // Seen in three sweeps at least: a single stray reading is not a tap.
+          if (touch.sightings >= 3 && duration >= 80 && duration <= 1200) {
             this.handleTap(touch);
           }
           this.activeTouches.delete(id);
@@ -300,6 +302,7 @@ export class LidarTouchController {
           side: normU < 0.5 ? 'spreader' : 'curber',
           startTime: now,
           lastSeen: now,
+          sightings: 1,
         };
         this.activeTouches.set(id, touch);
         // Add visual ripple

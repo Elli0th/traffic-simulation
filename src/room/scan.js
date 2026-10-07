@@ -55,6 +55,16 @@ export class ScanDetector {
     this.maxWidth = 450; // wider than this is a person leaning in, not a hand
     Object.assign(this, options);
     this.background = null;
+    this.recent = []; // the last few sweeps' things, to tell what stays from what flickers
+  }
+
+  // The things that have been there for three sweeps running: a finger, not a flicker.
+  steady(blips) {
+    const near = (list, b) => list.some((o) => Math.hypot(o.x - b.x, o.y - b.y) < 60);
+    const out = this.recent.length >= 2 ? blips.filter((b) => this.recent.every((list) => near(list, b))) : [];
+    this.recent.push(blips);
+    if (this.recent.length > 2) this.recent.shift();
+    return out;
   }
 
   get ready() {
@@ -65,7 +75,9 @@ export class ScanDetector {
     return Math.round((angle + Math.PI) / BIN);
   }
 
-  // Learns the empty room: the median distance seen in each direction.
+  // Learns the empty room: the nearest distance seen in each direction, bar the odd stray reading.
+  // (Not the median: a beam that only sometimes catches a dent or an edge of the table would then
+  // count as something new every time it does.)
   setBackground(scans) {
     const seen = new Map();
     for (const s of scans) {
@@ -79,16 +91,24 @@ export class ScanDetector {
     this.background = new Map();
     for (const [k, list] of seen) {
       list.sort((a, b) => a - b);
-      this.background.set(k, list[list.length >> 1]);
+      this.background.set(k, list[Math.min(list.length - 1, Math.floor(list.length * 0.1))]);
     }
   }
 
-  // Returns [{ x, y, width, compact: true }]: the middle of each thing in the fan.
+  // Returns [{ x, y, width, compact: true }]: the middle of each thing in the fan. With `area` set to
+  // { x0, x1, y0, y1 } (millimetres from the lidar), readings outside it are ignored: people and
+  // chairs around the table are not on it.
   detect(scan) {
     if (!this.background) return [];
     const hits = [];
+    const area = this.area;
     for (let i = 0; i < scan.angles.length; i++) {
       const r = scan.ranges[i];
+      if (area) {
+        const x = r * Math.cos(scan.angles[i]);
+        const y = r * Math.sin(scan.angles[i]);
+        if (x < area.x0 || x > area.x1 || y < area.y0 || y > area.y1) continue;
+      }
       const k = this.bin(scan.angles[i]);
       // The readings do not fall on the same angles every sweep, so look half a degree either side too.
       let far = this.background.get(k);

@@ -16,6 +16,9 @@ const config = {
   margin: 60,
   objects: true,
   sending: true,
+  // Where the table is from the room's lidar, in millimetres (x straight out along its 0° line, y to
+  // either side), with a good margin: nothing outside it is looked at. null looks everywhere.
+  area: { x0: -50, x1: 1300, y0: -950, y1: 950 },
   calibrations: {},
   ...JSON.parse(localStorage.getItem(KEY) || '{}'),
 };
@@ -111,7 +114,7 @@ async function tick() {
   frames++;
   if (collecting) {
     collecting.push(scan);
-    if (collecting.length >= 12) {
+    if (collecting.length >= 30) {
       detector.setBackground(collecting);
       collecting = null;
       config.backgrounds = { ...config.backgrounds, [slot()]: [...detector.background] };
@@ -119,7 +122,8 @@ async function tick() {
     }
   }
   detector.margin = Number(config.margin);
-  blips = detector.detect(scan);
+  detector.area = config.source === 'sim' ? null : config.area;
+  blips = detector.steady(detector.detect(scan));
 
   if (calibrator) {
     if (calibrator.observe(blips)) nextMarker();
@@ -184,6 +188,15 @@ function draw() {
       if (scan.ranges[i] <= 0) continue;
       const [x, y] = toPx(scan.ranges[i] * Math.cos(scan.angles[i]), scan.ranges[i] * Math.sin(scan.angles[i]));
       ctx.fillRect(x - 1, y - 1, 2, 2);
+    }
+    if (detector.area) {
+      // The part of the room that is looked at.
+      const { x0, x1, y0, y1 } = detector.area;
+      const [ax, ay] = toPx(x0, y0);
+      const [bx, by] = toPx(x1, y1);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ax, ay, bx - ax, by - ay);
     }
     const c = calibration();
     if (c && !calibrator) {
