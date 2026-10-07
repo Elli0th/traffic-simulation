@@ -30,17 +30,42 @@ map. The first version, a small invented grid city, is still at `/grid.html`.
 
 ## Outbreak game (two players)
 
-Open http://localhost:5173/?game for a Plague Inc-style game on the same map. The Spreader seeds a
-virus and upgrades it; the Curber locks down zones, vaccinates, masks up and tests. People catch it
-from infectious people near them while they are outdoors. Red is infectious, amber exposed, teal
-recovered or vaccinated, white isolating. Glowing squares show where it is when people are too small
-to see. There is no winner: a round runs 3 minutes and stands for 60 days (30× speed). Each simulated person stands for about 290 of Göteborg's 600,000 people, and the virus follows the original COVID-19 strain: 3 days until infectious, 8 days infectious, R0 of about 2.5, 5% needing a hospital bed, 0.7% dying. Counts are shown in real people. People live around homes and workplaces, so dense districts are crowded and risk there is scaled by how built-up the area is. Trams and buses carry the virus: people waiting at a stop mix with the passengers, so an infectious rider takes it to the next stop (infected vehicles turn red).
+Open http://localhost:5173/?game. Two side-by-side cameras show the same city and outbreak.
+Spreader is on the left, Curber on the right. Each has independent + / - / Whole map buttons,
+scroll zoom and right-drag pan. Actions target only their owner's map; selecting an action on one
+side never arms the other side. The top bar spans both sides and shows current infected (exposed
+plus infectious) and non-infected (susceptible plus recovered) totals. All people use red/green dots,
+including people currently indoors. Isolation and vaccination status are not revealed by dot colour.
+Only the Spreader sees party markers; only the Curber sees lockdown rings/closures. No opponent
+action announcements are shown. Points, action buttons and cooldowns sit in covered panels; click
+Show / hide to open your panel, which closes when you choose an action. Only one panel opens at a time.
+A shared screen still lets someone physically look across; this is visual separation, not secure device privacy.
+Click a busy street to place four initial exposed people for free.
+The round runs three real minutes; at 30? that is 90 simulated minutes. All action timings below
+use simulated time. This is an accelerated fictional game model, not a prediction for any disease.
 
-| Key | Spreader | Key | Curber |
+Scale and realism: a round stands for 60 days (30× speed). Each simulated person stands for about 290 of Göteborg's 600,000 people, and the virus follows the original COVID-19 strain: 3 days until infectious, 8 days infectious, R0 of about 2.5, 5% needing a hospital bed, 0.7% dying. Counts are shown in real people. People live around homes and workplaces, so dense districts are crowded and risk there is scaled by how built-up the area is. Trams and buses carry the virus: people waiting at a stop mix with the passengers, so an infectious rider takes it to the next stop (infected vehicles turn red).
+
+| Player / key | Action | Delay | Effect / duration |
 | --- | --- | --- | --- |
-| `Q` then click | Seed the virus (first one is free) | `I` then click | Lockdown zone (also closes streets) |
-| `W` `E` `R` | Spreads faster, airborne reach, evades tests | `O` then click | Vaccinate zone |
-| | | `P` `L` | Mask mandate, test and trace |
+| Spreader Q + click | Start a party (10 pax) | Immediate | Ten nearest people within 300m; extra group contacts for 10m |
+| Spreader W | Antimask conspiracy | 5m | Contact transmission ?1.4 for 30m |
+| Spreader E | Antivaxx conspiracy | 5m | Vaccine acceptance falls from 85% to 25% for 40m |
+| Spreader R + click | Send someone sick to work | Immediate | Nearest infectious person within 300m stays outside and evades isolation for 15m; lockdown still applies |
+| Curber I + click | Lockdown | 1m | 220m zone keeps 90% of people home for 30m and cancels party contacts there |
+| Curber O | Free vaccines | 2m | Citywide rollout for 30m; each unvaccinated person has an 85% / 600 per-second uptake chance (25% / 600 during antivaxx) |
+| Curber P | Social distancing | 1m | Ordinary transmission ?0.55 and party transmission ?0.45 for 30m |
+| Curber L | New hospitals | 10m | Permanent 0.3% per-second chance of isolating each infectious person |
+| Curber K | New vaccine | 20m | Permanent improvement from 65% to 90% susceptibility reduction for vaccinated people |
+
+Vaccination protects after another 5m and does not cure existing infections. Vaccinated people can
+still catch and transmit infection. A party adds a hazard of 0.004 per infectious attendee per second
+(about 21% risk over one minute with one infectious attendee, before protection/distancing).
+Ordinary close contact uses a hazard of 0.1 per second within 18m. These intentionally accelerated
+rates depend on the actual crowd, movement and interventions; they are not fixed citywide infection rates.
+Incubation averages 90 seconds; infectious duration averages 30m, both with ?30% variation.
+Recovered people are immune for the round. Hospitals represent isolation capacity, not deaths or treatment outcomes.
+Action costs, delays, durations and cooldowns are in `ACTIONS` in `src/virus.js`.
 
 ## Planning a change
 
