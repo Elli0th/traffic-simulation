@@ -366,11 +366,20 @@
       #g-menu button:hover { border-color: #5ad1ff; background: #19202a; }
       #g-menu button b { display: block; margin-bottom: 6px; font-size: 18px; }
       #g-menu button small { color: #8f9bad; line-height: 1.4; }
-      .ai-note { display: none; margin: 8px 0; padding: 10px 12px; font-size: 12px; line-height: 1.5; color: #cfd6e0; background: rgba(255, 255, 255, 0.05); border-radius: 8px; }
-      .ai-note b { display: block; margin-bottom: 4px; color: #5ee6a8; }
-      body.one-player .ai-note { display: block; }
       body.one-player [data-player="curber"] .private-controls,
       body.one-player [data-player="curber"] [data-reveal] { display: none !important; }
+      #g-feed { display: none; position: absolute; top: 112px; right: 0; bottom: 224px; width: 340px; box-sizing: border-box; padding: 14px 16px; overflow: auto; background: #101720; border-left: 2px solid #33404e; font-size: 13px; line-height: 1.5; pointer-events: auto; }
+      body.one-player #g-feed { display: block; }
+      #g-feed h4 { margin: 0 0 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #5ee6a8; }
+      #g-feed ul { margin: 0; padding: 0; list-style: none; }
+      #g-feed li { margin-bottom: 8px; padding: 8px 10px; color: #8f9bad; background: rgba(255, 255, 255, 0.04); border-radius: 6px; }
+      #g-feed li:first-child { color: #e8edf5; background: rgba(94, 230, 168, 0.12); }
+      #g-feed li i { display: block; margin-bottom: 2px; font-size: 11px; font-style: normal; letter-spacing: 0.08em; text-transform: uppercase; color: #ffc233; font-variant-numeric: tabular-nums; }
+      #g-feed li.fresh { animation: g-flash 2.5s ease-out; }
+      @keyframes g-flash { from { background: rgba(94, 230, 168, 0.35); } to { background: transparent; } }
+      body.one-player::after { display: none; }
+      body.one-player [data-player="curber"] { display: none; }
+      body.one-player #game .player-panel[data-player="spreader"] { width: 100%; border-right: 0; }
     </style>
   </head>
   <body>
@@ -401,6 +410,7 @@
         <div id="g-split"><i style="background:#50dda5"></i><i style="background:#ff4545"></i></div>
         <canvas id="g-chart" width="600" height="120" hidden></canvas>
       </header>
+      <div id="g-feed"><h4>What the computer did</h4><ul id="g-feed-list"><li>Watching the city…</li></ul></div>
       <section class="player-panel" data-player="spreader">
         <div class="player-top"><h3>Spreader</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in spreader">+</button><button data-zoom="1.25" aria-label="Zoom out spreader">-</button><button data-zoom="fit">Whole map</button></div></div>
         <button data-reveal aria-expanded="false">Show / hide my points &amp; controls</button>
@@ -414,7 +424,6 @@
       </section>
       <section class="player-panel" data-player="curber">
         <div class="player-top"><h3>Curber</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in curber">+</button><button data-zoom="1.25" aria-label="Zoom out curber">-</button><button data-zoom="fit">Whole map</button></div></div>
-        <div class="ai-note"><b>The computer is the Curber</b><span id="g-ai-log">Watching the city…</span></div>
         <button data-reveal aria-expanded="false">Show / hide my points &amp; controls</button>
         <div class="private-controls"><h3>Action points <b id="g-cp">0</b></h3><div class="tools">
         <button data-act="lockdown">Lockdown<small>I | 30m | click map | <span data-cost></span></small></button>

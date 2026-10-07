@@ -7,7 +7,7 @@ import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDa
 import { MouseInput } from './input.js';
 import { Outbreak, ACTIONS, DAY } from './virus.js';
 import { CurberAI } from './curber-ai.js';
-import { SIDES, gameRect, sideAt, ownsAction, privateOverlays, publicCounts } from './game-view.js';
+import { SIDES, gameRect, sideAt, ownsAction, privateOverlays, publicCounts, setSinglePlayer, activeSides } from './game-view.js';
 import * as relay from './room/relay.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
@@ -147,7 +147,7 @@ function zoomGame(side, factor) {
 function resize() {
   renderer.setSize(innerWidth, innerHeight);
   updateCameras();
-  if (game) for (const side of SIDES) updateGameCamera(side);
+  if (game) for (const side of activeSides()) updateGameCamera(side);
 }
 addEventListener('resize', resize);
 zoom = fitZoom();
@@ -1111,20 +1111,33 @@ if (game) {
 
 // ---------- start menu: one player against the computer, or two players ----------
 
+const FEED = {
+  distancing: 'introduced social distancing: contacts drop by almost half',
+  lockdown: 'locked down an area (the red circle on the map)',
+  vaccines: 'began a free vaccine rollout',
+  hospitals: 'started building new hospitals, ready in about a week',
+  newvaccine: 'began researching a stronger vaccine, ready in about two weeks',
+};
+const feed = [];
+function tell(time, text) {
+  feed.unshift({ day: Math.min(60, Math.floor(time / DAY) + 1), text });
+  feed.length = Math.min(feed.length, 12);
+  el('g-feed-list').innerHTML = feed.map((f, k) => `<li class="${k === 0 ? 'fresh' : ''}"><i>Day ${f.day}</i>${f.text}</li>`).join('');
+}
+
 function startGame(players) {
   if (players === 1) {
     document.body.classList.add('one-player');
+    setSinglePlayer(true);
     ai = new CurberAI(game, {
-      onAct: (kind, at, time) => {
-        const day = Math.min(60, Math.floor(time / DAY) + 1);
-        aiMoves.push(`Day ${day}: ${ACTIONS[kind].label}${at && at.x !== undefined ? ' (somewhere on the map)' : ''}`);
-        el('g-ai-log').innerHTML = aiMoves.slice(-4).join('<br />');
-      },
+      onNotice: (time) => tell(time, 'Health officials have noticed the outbreak and are preparing a response.'),
+      onAct: (kind, at, time) => tell(time, `The computer ${FEED[kind]}.`),
     });
+    resize();
+    updateGameCamera('spreader', true);
   }
   el('g-menu').classList.remove('show');
 }
-const aiMoves = [];
 if (game) {
   const chosen = params.get('players');
   if (chosen === '1' || chosen === '2') startGame(Number(chosen));
@@ -1269,13 +1282,14 @@ function draw(dt, blobs) {
     renderer.setScissorTest(true);
     heatCells.visible = false;
     routeDots.visible = false;
-    for (const side of SIDES) {
+    for (const side of activeSides()) {
       const r = gameRect(side, innerWidth, innerHeight);
       const y = innerHeight - r.y - r.height;
       renderer.setViewport(r.x, y, r.width, r.height);
       renderer.setScissor(r.x, y, r.width, r.height);
-      closedStrips.visible = side === 'curber';
-      drawOverlays(privateOverlays(game, side), sim.time);
+      // One screen shows everything: the Spreader's parties and the computer's lockdowns and closed streets.
+      closedStrips.visible = side === 'curber' || ai !== null;
+      drawOverlays(ai ? privateOverlays(game, 'spreader').concat(privateOverlays(game, 'curber')) : privateOverlays(game, side), sim.time);
       drawPeople(gameViews[side].zoom / r.width);
       renderer.render(scene, gameViews[side].cam);
     }

@@ -28,10 +28,11 @@ const PLAN = [
 const REPEAT = { kind: 'lockdown', hotspot: true };
 
 export class CurberAI {
-  constructor(game, { seed = 77, onAct = null, tuning = {} } = {}) {
+  constructor(game, { seed = 77, onAct = null, onNotice = null, tuning = {} } = {}) {
     this.game = game;
     this.rand = mulberry32(seed);
     this.onAct = onAct;
+    this.onNotice = onNotice;
     this.cfg = { ...AI, ...tuning };
     this.noticedAt = null;
     this.nextAt = 0;
@@ -54,6 +55,7 @@ export class CurberAI {
     if (this.noticedAt === null) {
       if (c.share < this.cfg.notice) return;
       this.noticedAt = g.time;
+      this.onNotice?.(g.time);
       this.nextAt = g.time + this.cfg.reaction * (0.8 + 0.4 * this.rand());
       return;
     }

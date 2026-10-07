@@ -30,7 +30,7 @@ map. The first version, a small invented grid city, is still at `/grid.html`.
 
 ## Outbreak game (two players)
 
-Open http://localhost:5173/?game and choose **1 player** or **2 players** on the start menu (or skip the menu with `?game&players=1` or `?game&players=2`). In the 1 player game you are the Spreader and the computer plays the Curber (`src/curber-ai.js`). It uses the same actions, costs and cooldowns as a person, and is lenient on purpose: it ignores the outbreak until about 1% of the city has caught it, waits a week of game days before its first move, then acts every 4 to 8 days and aims its lockdowns imperfectly. Its moves are listed on the Curber side.
+Open http://localhost:5173/?game and choose **1 player** or **2 players** on the start menu (or skip the menu with `?game&players=1` or `?game&players=2`). In the 1 player game you are the Spreader and the computer plays the Curber (`src/curber-ai.js`). It uses the same actions, costs and cooldowns as a person, and is lenient on purpose: it ignores the outbreak until about 1% of the city has caught it, waits a week of game days before its first move, then acts every 4 to 8 days and aims its lockdowns imperfectly. The 1 player game is one full screen with a log on the right that says what the computer did and when, including when it first noticed the outbreak, and its lockdown circles are drawn on your map.
 
 In the 2 player game: Two side-by-side cameras show the same city and outbreak.
 Spreader is on the left, Curber on the right. Each has independent + / - / Whole map buttons,
