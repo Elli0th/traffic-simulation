@@ -111,7 +111,8 @@ npm run room video table    # game: the projector only
 ```
 
 Each display is given `/watch.html`, a page that does nothing but play the video, and the stream
-page opens with `via=video`. Press **Start streaming** as before. The status line says `Video:` and
+page opens with `via=video`. If a display's video has not connected after eight seconds, that
+display gets frames instead, so the worst case is the frames way. Press **Start streaming** as before. The status line says `Video:` and
 the size and megabits of what each display is being sent. Not yet tried on the real displays: if a
 display stays black, `npm run room boot` is the frames way, which is.
 

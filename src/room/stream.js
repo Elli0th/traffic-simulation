@@ -14,7 +14,10 @@
 //                     that page (npm run room video).
 //   ?tvs=0            the table only; the TVs are left alone
 //   ?fps=20           fewer frames a second for the table (30 at most)
-//   ?tvfps=12         frames a second for each TV (12 unless said; their dashboards change slowly)
+//   ?tvfps=8          frames a second for each TV (8 unless said; their dashboards change slowly, and a
+//                     TV picture that has not changed is not sent again)
+//   ?res=1920         JPEG frames for the table never narrower than this (1280 unless said, 1920 at most):
+//                     on a slow wifi the table then gets fewer frames a second, not fewer pixels
 //   ?q=0.6            a fixed JPEG quality; without it the quality and size follow what the wifi carries
 //   ?direct           use the displays' /frames/direct (less work for them; plain sRGB only)
 //   ?map=west         passed on to the table page
@@ -26,9 +29,13 @@ import * as relay from './relay.js';
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
 const fps = Math.min(30, Math.max(1, Number(params.get('fps')) || 30));
-const tvFps = Math.min(30, Math.max(1, Number(params.get('tvfps')) || 12));
+const tvFps = Math.min(30, Math.max(1, Number(params.get('tvfps')) || 8));
 const tableOnly = params.get('tvs') === '0';
 const viaVideo = params.get('via') === 'video';
+// The least picture a JPEG frame carries, as a share of the full size: below this the page gives up
+// frames a second instead. A blurred table is worse than one that moves a little less smoothly.
+const floorScale = (name) => (name === 'projector' ? Math.min(1920, Math.max(960, Number(params.get('res')) || 1280)) / 1920 : 0.75);
+const FLOOR_QUALITY = 0.62;
 document.body.classList.toggle('table-only', tableOnly);
 
 // ---------- the pictures: what each display's frame holds ----------
@@ -74,7 +81,10 @@ const senders = [...document.querySelectorAll('.stage')]
       // and back up when it can: a softer picture on time is better than a sharp one late.
       quality: Math.min(0.9, Math.max(0.3, Number(params.get('q')) || 0.75)),
       // JPEG frames start at two thirds (1280 across for the table) and grow if the wifi carries it.
-      scale: viaVideo ? 1 : 0.67,
+      scale: viaVideo ? 1 : floorScale(name),
+      frames: !viaVideo, // sending JPEG frames; with ?via=video only if the video connection fails
+      thumb: null, // a TV's last picture, very small, to tell whether it has changed
+      thumbAt: 0,
       pc: null, // the video connection, with ?via=video
       stream: null,
       size: [0, 0],
@@ -140,6 +150,7 @@ video.playsInline = true;
 let capture = null; // the browser's picture of this tab
 let timer = 0;
 let trouble = ''; // why the tab could not be shared
+let startedAt = 0;
 
 // Cuts this display's picture out of the picture of the tab, into its canvas.
 function cut(s) {
@@ -159,10 +170,28 @@ function cut(s) {
   s.ctx.drawImage(video, box.left * kx, box.top * ky, box.width * kx, box.height * ky, 0, 0, w, h);
 }
 
+// A TV dashboard mostly stands still. Its picture is compared, sixteen pixels across, with the last
+// one sent; if nothing has changed it is not sent again, bar once every two seconds for a display
+// that has just been taken back from something else.
+const tiny = document.createElement('canvas');
+tiny.width = 32;
+tiny.height = 18;
+const tinyCtx = tiny.getContext('2d', { willReadFrequently: true });
+function unchanged(s, now) {
+  tinyCtx.drawImage(s.canvas, 0, 0, 32, 18);
+  const data = tinyCtx.getImageData(0, 0, 32, 18).data;
+  let same = Boolean(s.thumb) && now - s.thumbAt < 2000;
+  if (same) for (let i = 0; i < data.length; i += 4) if (Math.abs(data[i] - s.thumb[i]) + Math.abs(data[i + 1] - s.thumb[i + 1]) + Math.abs(data[i + 2] - s.thumb[i + 2]) > 12) { same = false; break; }
+  if (same) return true;
+  s.thumb = data;
+  s.thumbAt = now;
+  return false;
+}
+
 function send(s, now) {
   if (now - s.last < 1000 / s.fps - 2) return;
   // Video: the canvas is the source of the connection's track; drawing on it is sending.
-  if (viaVideo) {
+  if (!s.frames) {
     s.last = now;
     return cut(s);
   }
@@ -171,6 +200,7 @@ function send(s, now) {
   if (s.encoding || s.inFlight >= 2) return;
   s.last = now;
   cut(s);
+  if (s.name !== 'projector' && unchanged(s, now)) return;
   s.encoding = true;
   s.canvas.toBlob(
     async (blob) => {
@@ -202,18 +232,19 @@ function frame() {
   for (const s of senders) send(s, now);
 }
 
-// Once a second, for JPEG frames: is the display getting them? If not, send less picture: first fewer
-// pixels down to 1280 across, then a rougher JPEG, then fewer pixels still. If so, send more again.
-// (Video does this by itself.)
+// Once a second, for JPEG frames: is the display getting them? If not, send less picture: fewer
+// pixels down to the floor, then a rougher JPEG down to its floor, and after that nothing more is
+// taken away: the frames a second drop instead. If so, send more again. (Video does this by itself.)
 function adapt(s) {
-  if (viaVideo || !capture || s.problem || params.has('q')) return;
-  if (s.rate < s.fps * 0.9) {
-    if (s.scale > 0.67) s.scale = Math.max(0.67, s.scale - 0.11);
-    else if (s.quality > 0.5) s.quality = Math.max(0.5, s.quality - 0.07);
-    else s.scale = Math.max(0.4, s.scale - 0.07);
-  } else if (s.rate >= s.fps * 0.97) {
-    if (s.scale < 0.67) s.scale = Math.min(0.67, s.scale + 0.05);
-    else if (s.quality < 0.8) s.quality = Math.min(0.8, s.quality + 0.03);
+  if (!s.frames || !capture || s.problem || params.has('q')) return;
+  const floor = floorScale(s.name);
+  // A TV that sends nothing because nothing changed is not a slow TV.
+  const slow = s.name === 'projector' ? s.rate < s.fps * 0.9 : s.inFlight >= 2;
+  if (slow) {
+    if (s.scale > floor) s.scale = Math.max(floor, s.scale - 0.11);
+    else if (s.quality > FLOOR_QUALITY) s.quality = Math.max(FLOOR_QUALITY, s.quality - 0.05);
+  } else if (s.name !== 'projector' || s.rate >= s.fps * 0.97) {
+    if (s.quality < 0.8) s.quality = Math.min(0.8, s.quality + 0.03);
     else s.scale = Math.min(1, s.scale + 0.05);
   }
 }
@@ -251,7 +282,7 @@ async function offer(s) {
 relay.on('rtc', async (m) => {
   if (!viaVideo || m.to !== 'sender' || !capture) return;
   const s = senders.find((x) => x.name === m.from);
-  if (!s) return;
+  if (!s || s.frames) return;
   if (m.ready) {
     // A display that says it is ready while a connection is being made is left to finish it.
     const state = s.pc?.connectionState;
@@ -263,6 +294,16 @@ relay.on('rtc', async (m) => {
 
 // Once a second: what each connection is really sending.
 async function measure(s) {
+  // No video after eight seconds (no watch page on the display, or the browser will not connect to it
+  // directly): that display gets JPEG frames instead, which need nothing from it.
+  if (s.pc?.connectionState !== 'connected' && performance.now() - startedAt > 8000) {
+    s.frames = true;
+    s.scale = floorScale(s.name);
+    s.pc?.close();
+    s.pc = null;
+    s.problem = '';
+    return;
+  }
   if (!s.pc) return void (s.problem ||= 'waiting for its watch page');
   for (const r of (await s.pc.getStats()).values()) {
     if (r.type !== 'outbound-rtp' || r.kind !== 'video') continue;
@@ -293,6 +334,7 @@ async function start() {
   video.srcObject = capture;
   await video.play().catch(() => {});
   timer = setInterval(frame, 1000 / Math.max(fps, tvFps));
+  startedAt = performance.now();
   if (viaVideo) for (const s of senders) tell(s.name, { hello: true }); // the watch pages answer that they are ready
   $('start').hidden = true;
   $('stop').hidden = false;
@@ -308,8 +350,9 @@ function stop() {
     if (s.pc) tell(s.name, { bye: true });
     s.pc?.close();
     s.pc = null;
+    s.frames = !viaVideo;
   }
-  if (!viaVideo) fetch('/room-frame-stop', { method: 'POST' }).catch(() => {});
+  fetch('/room-frame-stop', { method: 'POST' }).catch(() => {});
   $('start').hidden = false;
   $('stop').hidden = true;
   describe();
@@ -322,8 +365,8 @@ function describe() {
   else if (!capture) status.textContent = 'Not streaming. Only what is chosen on the left is running.';
   else {
     const total = senders.reduce((sum, s) => sum + s.megabits, 0);
-    const size = (s) => (viaVideo ? s.size : [s.canvas.width, s.canvas.height]).join('×');
-    status.textContent = `${viaVideo ? 'Video' : 'Frames'}: ${senders.map((s) => (s.problem ? `${s.name}: ${s.problem}` : `${s.name} ${s.rate}/${s.fps} at ${size(s)}`)).join(' · ')} · ${total.toFixed(1)} Mbit/s`;
+    const size = (s) => (s.frames ? [s.canvas.width, s.canvas.height] : s.size).join('×');
+    status.textContent = `${senders.map((s) => (s.problem ? `${s.name}: ${s.problem}` : `${s.name} ${s.frames ? 'frames' : 'video'} ${s.rate}/${s.fps} at ${size(s)}`)).join(' · ')} · ${total.toFixed(1)} Mbit/s`;
   }
   status.className = trouble || problems.length ? 'bad' : capture ? 'live' : '';
 }
@@ -332,7 +375,7 @@ $('start').addEventListener('click', start);
 $('stop').addEventListener('click', stop);
 setInterval(() => {
   for (const s of senders) {
-    if (viaVideo) {
+    if (!s.frames) {
       if (capture) measure(s).catch(() => {});
       continue;
     }
