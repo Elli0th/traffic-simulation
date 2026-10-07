@@ -133,7 +133,8 @@ check('the computer Curber is lenient, then acts, and slows but does not erase t
   assert.ok(share < free.share, `${share} vs ${free.share}`);
 });
 
-function fixture(n = 20) {
+// Enough people that the ten at a party stay under the share of the city that ends the round.
+function fixture(n = 60) {
   const agents = Array.from({ length: n }, (_, k) => ({ x: k, z: 0, out: true, threshold: 0.5 }));
   const game = new Outbreak({ agents }, { seed: 7 });
   game.phase = 'running';

@@ -84,6 +84,36 @@
       body.nohud #plan {
         display: none;
       }
+      #modes {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        display: flex;
+        padding: 4px;
+        background: rgba(8, 10, 14, 0.86);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        font-size: 13px;
+      }
+      /* In the game the players' panels fill the bottom edge, so the switch sits in the bar at the top. */
+      body.game #modes {
+        left: auto;
+        right: 110px;
+        top: 8px;
+        bottom: auto;
+        z-index: 11;
+      }
+      #modes a {
+        padding: 6px 14px;
+        color: #9aa4b2;
+        text-decoration: none;
+        border-radius: 999px;
+      }
+      #modes a.on {
+        color: #06222e;
+        background: #5ad1ff;
+        font-weight: 600;
+      }
       #game {
         position: fixed;
         top: 16px;
@@ -319,7 +349,7 @@
       .shared-stats h2 { display:flex; justify-content:space-between; }
       .totals { display:flex; gap:40px; font-size:16px; margin-bottom:6px; }
       .totals b { margin-left:10px; font-size:22px; font-variant-numeric:tabular-nums; }
-      .totals span:first-child b { color:#ff4545; } .totals span:last-child b { color:#50dda5; }
+      .totals span:first-child b { color:#ff4545; } .totals span:nth-child(2) b { color:#50dda5; } #g-caught { color:#ff9f1c; } #g-approval { color:#ffc233; }
       #game .player-panel { position:absolute; bottom:0; width:50%; height:224px; box-sizing:border-box; padding:8px 12px; background:#101720; border-top:1px solid #33404e; pointer-events:auto; overflow:auto; }
       [data-player="spreader"] { left:0; border-right:2px solid #33404e; }
       [data-player="curber"] { right:0; }
@@ -384,6 +414,7 @@
   </head>
   <body>
     <div id="loading">Loading Göteborg…</div>
+    <div id="modes"><a data-mode="traffic">Traffic demo</a><a data-mode="game">Outbreak game</a></div>
     <div id="hud">
       <h1><span>Göteborg · <span id="m-speed">3×</span></span><span id="clock">07:30</span></h1>
       <div class="row"><span>Congestion</span><b id="m-cong">0%</b></div>
@@ -405,7 +436,7 @@
     <div id="game">
       <header class="shared-stats">
         <h2>Outbreak <span id="g-time"></span></h2>
-        <div class="totals"><span>Infected <b id="g-infected">0</b></span><span>Non-infected <b id="g-noninfected">0</b></span></div>
+        <div class="totals"><span>Infected <b id="g-infected">0</b></span><span>Non-infected <b id="g-noninfected">0</b></span><span title="The Spreader wins when this reaches the goal">Caught it <b id="g-caught">0%</b></span><span title="The Spreader wins if this reaches zero. Lockdowns and distancing cost approval.">Approval <b id="g-approval">100%</b></span></div>
         <p id="g-status"></p>
         <div id="g-split"><i style="background:#50dda5"></i><i style="background:#ff4545"></i></div>
         <canvas id="g-chart" width="600" height="120" hidden></canvas>

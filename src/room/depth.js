@@ -156,7 +156,8 @@ export class BlobTracker {
     this.tracks = [];
   }
 
-  // blobs: [{ x, y, r }] in table coordinates. Returns the steady list in the same form.
+  // blobs: [{ x, y, r, h }] in table coordinates. Returns the steady list in the same form.
+  // (h, the object's height, tells the outbreak game a cup from a puck; sensors without it leave it out.)
   update(blobs) {
     const free = blobs.slice();
     for (const t of this.tracks) {
@@ -177,18 +178,20 @@ export class BlobTracker {
       t.x += (b.x - t.x) * 0.5;
       t.y += (b.y - t.y) * 0.5;
       t.r += (b.r - t.r) * 0.5;
+      if (b.h !== undefined) t.h += (b.h - t.h) * 0.5;
       t.seen++;
       t.missed = 0;
     }
-    for (const b of free) this.tracks.push({ x: b.x, y: b.y, r: b.r, seen: 1, missed: 0, out: null });
+    for (const b of free) this.tracks.push({ x: b.x, y: b.y, r: b.r, h: b.h, seen: 1, missed: 0, out: null });
     this.tracks = this.tracks.filter((t) => t.missed <= this.forget);
 
     const steady = [];
     for (const t of this.tracks) {
       if (t.seen < this.confirm) continue;
       const o = t.out;
-      if (!o || Math.hypot(t.x - o.x, t.y - o.y) > this.deadband || Math.abs(t.r - o.r) > o.r * 0.12) {
+      if (!o || Math.hypot(t.x - o.x, t.y - o.y) > this.deadband || Math.abs(t.r - o.r) > o.r * 0.12 || Math.abs(t.h - o.h) > o.h * 0.15) {
         t.out = { x: t.x, y: t.y, r: t.r };
+        if (t.h !== undefined) t.out.h = t.h;
       }
       steady.push(t.out);
     }
