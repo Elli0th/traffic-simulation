@@ -12,6 +12,18 @@ npm run dev
 Open http://localhost:5173 for the city centre, or http://localhost:5173/?map=west for the larger
 map. The first version, a small invented grid city, is still at `/grid.html`.
 
+## Two modes
+
+The switch at the bottom left of the table window, or `M`, changes between them. The screens follow
+the table.
+
+| Mode | Address | What it is |
+| --- | --- | --- |
+| Traffic demo | `/` | The city and its traffic: put an object on a street and it closes |
+| Outbreak game | `/?game=table` | The two-player game on top of the same traffic, with every way of playing switched on: pieces and hands on the table, and the mouse and keyboard |
+
+`/?game` is the game with the mouse-and-keyboard panel only.
+
 ## Controls
 
 | Input | Effect |

@@ -84,6 +84,32 @@
       body.nohud #plan {
         display: none;
       }
+      #modes {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        display: flex;
+        padding: 4px;
+        background: rgba(8, 10, 14, 0.86);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        font-size: 13px;
+      }
+      /* Played on the table, the Curber's cards run along the bottom edge. */
+      body.vt-on #modes {
+        bottom: calc(13vh + 12px);
+      }
+      #modes a {
+        padding: 6px 14px;
+        color: #9aa4b2;
+        text-decoration: none;
+        border-radius: 999px;
+      }
+      #modes a.on {
+        color: #06222e;
+        background: #5ad1ff;
+        font-weight: 600;
+      }
       #game {
         position: fixed;
         top: 16px;
@@ -317,6 +343,7 @@
   </head>
   <body>
     <div id="loading">Loading Göteborg…</div>
+    <div id="modes"><a data-mode="traffic">Traffic demo</a><a data-mode="game">Outbreak game</a></div>
     <div id="hud">
       <h1><span>Göteborg · <span id="m-speed">3×</span></span><span id="clock">07:30</span></h1>
       <div class="row"><span>Congestion</span><b id="m-cong">0%</b></div>

@@ -1146,6 +1146,38 @@ const tablePlay = params.has('game')
     })
   : null;
 
+// ---------- the two modes: the traffic demo, or the outbreak game on top of it ----------
+
+// Each is the same page at a different address, so changing mode starts it afresh. The game opens
+// with everything on: pieces and hands on the table, and the mouse and keyboard as well.
+function modeUrl(name) {
+  const next = new URLSearchParams(location.search);
+  if (name === 'game') next.set('game', follower ? '' : 'table');
+  else next.delete('game');
+  const query = next.toString().replace(/=(&|$)/g, '$1');
+  return location.pathname + (query ? `?${query}` : '');
+}
+const mode = params.has('game') ? 'game' : 'traffic';
+for (const a of document.querySelectorAll('#modes a')) {
+  a.href = modeUrl(a.dataset.mode);
+  a.classList.toggle('on', a.dataset.mode === mode);
+}
+addEventListener('keydown', (e) => {
+  if (e.key === 'm' && !(e.target instanceof HTMLInputElement) && !follower) location.href = modeUrl(mode === 'game' ? 'traffic' : 'game');
+});
+if (follower) {
+  // A screen has no switch of its own: it goes where the table goes.
+  el('modes').remove();
+  let gameSeen = performance.now();
+  relay.on('virus', () => {
+    gameSeen = performance.now();
+    if (mode !== 'game') location.href = modeUrl('game');
+  });
+  relay.on('state', () => {
+    if (mode === 'game' && performance.now() - gameSeen > 6000) location.href = modeUrl('traffic');
+  });
+}
+
 // ---------- frame loop ----------
 
 function advance(simSeconds) {
