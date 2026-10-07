@@ -46,9 +46,9 @@ try {
     g.seed(p.x, p.z); g.points.spreader = 100; g.points.curber = 100;
     return {x:p.x,z:p.z};
   })()`);
-  await evaluate('document.querySelector("[data-player=spreader] [data-reveal]").click(); document.querySelector("[data-act=party]").click()');
-  const pixels = { x: 360 + (target.x - after.spreader.x) * 720 / after.spreader.zoom,
-    y: 112 + gameRect('spreader', 1440, 900).height / 2 + (target.z - after.spreader.z) * 720 / after.spreader.zoom };
+  await evaluate('document.querySelector("[data-act=party]").click()');
+  const leftRect = gameRect('spreader',1440,900);
+  const pixels = { x:leftRect.x + leftRect.width / 2 + (target.x-after.spreader.x)*leftRect.width/after.spreader.zoom, y:leftRect.y+leftRect.height/2+(target.z-after.spreader.z)*leftRect.width/after.spreader.zoom };
   await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pixels.x, y: pixels.y });
   await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal(await evaluate('document.querySelector("[data-map=spreader] .target-preview").hidden'), false);
@@ -59,14 +59,14 @@ try {
   assert.ok(await evaluate('document.querySelector("[data-map=spreader] .action-pin").textContent.includes("Party")'));
   assert.equal(await evaluate('document.querySelectorAll("[data-map=curber] .action-pin").length'), 0);
   assert.ok(await evaluate('document.getElementById("g-effects-spreader").textContent.includes("Active")'));
-  const effort = await evaluate('window.table.game.effort.spreader');
-  await evaluate('document.querySelector("[data-player=spreader] [data-rally]").click()');
-  assert.equal(await evaluate('window.table.game.effort.spreader'), effort + 1);
-  assert.equal(await evaluate('window.table.game.effort.curber'), 0);
-  assert.equal(await evaluate('document.querySelector("[data-player=spreader] [data-repeat]").disabled'), true);
-  await evaluate('document.querySelector("[data-player=curber] [data-reveal]").click(); document.querySelector("[data-act=lockdown]").click()');
-  const rightPixels = { x: 1080 + (target.x - after.curber.x) * 720 / after.curber.zoom,
-    y: 112 + gameRect('spreader', 1440, 900).height / 2 + (target.z - after.curber.z) * 720 / after.curber.zoom };
+  assert.equal(await evaluate('document.querySelectorAll("[data-rally], [data-reveal]").length'), 0);
+  assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-player=spreader] .private-controls")).display'), 'grid');
+  assert.ok(await evaluate('document.querySelector("[data-act=party]").getBoundingClientRect().height >= 68'));
+  assert.ok(await evaluate('document.querySelector("[data-zoom]").getBoundingClientRect().height >= 48'));
+  assert.equal(await evaluate('document.querySelectorAll("[data-repeat]").length'), 0);
+  await evaluate('document.querySelector("[data-act=lockdown]").click()');
+  const rightRect = gameRect('curber',1440,900);
+  const rightPixels = {x:rightRect.x+rightRect.width/2+(target.x-after.curber.x)*rightRect.width/after.curber.zoom, y:rightRect.y+rightRect.height/2+(target.z-after.curber.z)*rightRect.width/after.curber.zoom};
   await command('Input.dispatchMouseEvent', { type: 'mousePressed', x: rightPixels.x, y: rightPixels.y, button: 'left', clickCount: 1 });
   await command('Input.dispatchMouseEvent', { type: 'mouseReleased', x: rightPixels.x, y: rightPixels.y, button: 'left', clickCount: 1 });
   await new Promise(resolve => setTimeout(resolve, 50));
@@ -75,10 +75,17 @@ try {
   assert.equal(await evaluate('document.querySelector("[data-map=spreader]").textContent.includes("Lockdown")'), false);
   const count = await evaluate('Number(document.getElementById("g-infected").textContent.replaceAll(",", "")) + Number(document.getElementById("g-noninfected").textContent.replaceAll(",", ""))');
   assert.equal(count, await evaluate('window.table.game.population'));
+  await evaluate('document.querySelector("[data-act=fakenews]").click(); document.querySelector("[data-act=education]").click()');
+  assert.equal(await evaluate('window.table.game.actionLog.at(-2).kind'), 'fakenews');
+  assert.equal(await evaluate('window.table.game.actionLog.at(-1).kind'), 'education');
+  assert.ok(await evaluate('document.getElementById("g-effects-spreader").textContent.includes("Spread fake news")'));
+  assert.ok(await evaluate('document.getElementById("g-effects-curber").textContent.includes("Health education")'));
+  assert.equal(await evaluate('document.getElementById("g-effects-spreader").textContent.includes("Health education")'), false);
+  assert.equal(await evaluate('document.getElementById("g-effects-curber").textContent.includes("Spread fake news")'), false);
   assert.deepEqual(errors, []);
   const screenshot = await command('Page.captureScreenshot', { format: 'png' });
   writeFileSync(join(tmpdir(), 'traffic-game-interactions.png'), Buffer.from(screenshot.data, 'base64'));
-  console.log('Independent zoom, target preview, party placement, private pins, rapid taps, cooldowns and shared totals passed.');
+  console.log('Independent zoom, target preview, party placement, private pins, visible enlarged controls, cooldowns and shared totals passed.');
   await command('Page.navigate', { url: 'http://localhost:5173/?game&players=1' });
   for (let attempt = 0; attempt < 120; attempt++) {
     if (await evaluate('!!window.table?.game && document.body.classList.contains("one-player") && !document.getElementById("loading")')) break;
@@ -86,8 +93,8 @@ try {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   const layout = await evaluate('({ map:document.querySelector("[data-map=spreader]").getBoundingClientRect().width, feed:document.getElementById("g-feed").getBoundingClientRect().width, curber:getComputedStyle(document.querySelector("[data-player=curber]")).display })');
-  assert.equal(layout.map, 1100);
-  assert.equal(layout.feed, 340);
+  assert.equal(layout.map, 944);
+  assert.equal(layout.feed, 280);
   assert.equal(layout.curber, 'none');
   assert.equal(await evaluate('window.table.game.winner'), undefined);
   assert.deepEqual(errors, []);

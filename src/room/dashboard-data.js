@@ -95,7 +95,7 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
 
   const transitCases = Math.round((game.fromTransit || 0) * scale);
 
-  const spreaderDeck = ['party', 'antimask', 'antivaxx', 'sickwork'].map((k) => {
+  const spreaderDeck = ['party', 'antimask', 'antivaxx', 'sickwork', 'fakenews'].map((k) => {
     const act = ACTIONS[k];
     const readyAt = game.ready[k] || 0;
     const cooldown = Math.max(0, readyAt - gameTime);
@@ -135,7 +135,7 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
       };
     });
 
-  const curberDeck = ['lockdown', 'vaccines', 'distancing', 'hospitals', 'newvaccine'].map((k) => {
+  const curberDeck = ['lockdown', 'vaccines', 'distancing', 'hospitals', 'newvaccine', 'education'].map((k) => {
     const act = ACTIONS[k];
     const readyAt = game.ready[k] || 0;
     const cooldown = Math.max(0, readyAt - gameTime);

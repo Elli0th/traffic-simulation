@@ -51,21 +51,16 @@ side never arms the other side. The top bar spans both sides and shows current i
 plus infectious) and non-infected (susceptible plus recovered) totals. All people use red/green dots,
 including people currently indoors. Isolation and vaccination status are not revealed by dot colour.
 Only the Spreader sees party/worker pins; only the Curber sees lockdown pins and zones. No opponent
-action announcements are shown. Points, action buttons and cooldowns sit in covered panels; click
-Show / hide to open your panel. It stays open for rapid actions; only one panel opens at a time.
+action announcements are shown. Points, action buttons and cooldowns are always visible in each
+player's panel. Action and zoom buttons have larger touch targets for projected play.
 A shared screen still lets someone physically look across; this is visual separation, not secure device privacy.
 Click a busy street to place four initial exposed people for free.
 Hover before placement to see a dashed target area and nearest named landmark. Placed actions get
 numbered pins and colour-coded areas: dashed for pending, solid for active, faded for finished.
 My actions & effects shows countdowns, party infection counts and citywide vaccination/isolation
-progress. Click a pin or a local action row to zoom to its location. Repeat here reuses the last map
-location, respecting its action's cost and cooldown. Immediate click confirmation is distinct from
+progress. Click a pin or a local action row to zoom to its location. Large action and zoom buttons
+sit beside each full-height map. Immediate click confirmation is distinct from
 the simulated delay before an intervention begins.
-
-Spreader can Rally supporters; Curber can Mobilise volunteers. Tap rapidly or hold to earn 0.3 points
-per accepted tap, capped at one reward every 3 simulated seconds per player (about 10 taps/sec at
-30x). The effort bar fills over 20 taps. Rewards stop when paused or the round ends, and never bypass
-an action's cooldown. Both players use the same reward rules.
 
 Outbreak mode uses a pedestrian/crossing-signal loop with quarter-second movement steps. It omits
 road-vehicle and transit simulation, decorative trees and expensive traffic metrics; the normal
@@ -90,11 +85,13 @@ omits vehicle movement as described above.
 | Spreader W | Antimask conspiracy | 5m | Contact transmission x1.4 for 30m |
 | Spreader E | Antivaxx conspiracy | 5m | Vaccine acceptance falls from 85% to 25% for 40m |
 | Spreader R + click | Send someone sick to work | Immediate | Nearest infectious person within 300m stays outside and evades isolation for 15m; lockdown still applies |
+| Spreader A | Spread fake news | 3m | Harmful false-cure misinformation increases ordinary contact transmission 20% and halves isolation detection for 30m; it never cures anyone |
 | Curber I + click | Lockdown | 1m | 220m zone keeps 90% of people home for 30m and cancels party contacts there |
 | Curber O | Free vaccines | 2m | Citywide rollout for 30m; each unvaccinated person has an 85% / 600 per-second uptake chance (25% / 600 during antivaxx) |
 | Curber P | Social distancing | 1m | Ordinary transmission x0.55 and party transmission x0.45 for 30m |
 | Curber L | New hospitals | 10m | Permanently increases case detection and isolation |
 | Curber K | New vaccine | 20m | Permanent improvement from 65% to 90% susceptibility reduction for vaccinated people |
+| Curber J | Health education | 2m | Monitoring health and seeking care reduces ordinary contact transmission 20% and adds 0.2/day isolation detection for 30m |
 
 Vaccination protects after another 5m and does not cure existing infections. Vaccinated people can
 still catch and transmit infection. A party adds a hazard of 0.004 per infectious attendee per second
@@ -111,7 +108,7 @@ the buttons and click the maps. The players sit side by side, the Spreader at th
 
 | What the sensors see | What it does |
 | --- | --- |
-| A hand or object held on a button for a second | Presses it: Show / hide, an action, + and -, Play again |
+| A hand or object held on a button for a second | Presses it: an action, + and -, End game / Reset |
 | An object put down on your own map | Plays there. The Spreader's first one places patient zero. After that it is the action chosen on the panel, or a party (Spreader) or a lockdown (Curber) if none is chosen |
 
 Whose piece it is follows from which half of the table it stands on. A piece counts once it has

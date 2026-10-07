@@ -345,48 +345,47 @@
       }
       body.game #hud { display:none; }
       body.game #game { inset:0; width:auto; padding:0; border:0; background:none; backdrop-filter:none; pointer-events:none; z-index:10; }
-      .shared-stats { position:absolute; inset:0 0 auto; height:112px; box-sizing:border-box; padding:12px 20px; background:#101720; pointer-events:auto; }
-      .shared-stats h2 { display:flex; justify-content:space-between; }
+      .shared-stats { position:absolute; inset:0 0 auto; height:112px; box-sizing:border-box; padding:8px 12px; background:#101720; pointer-events:auto; }
+      .shared-stats h2 { display:flex; justify-content:space-between; align-items:center; height:48px; margin:0; }
+      #game .shared-stats .totals { position:absolute; top:20px; left:160px; margin:0; }
+      #game #g-status { margin:5px 0 7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .round-controls { display:flex; align-items:center; gap:16px; }
-      #game .round-controls button { padding:5px 10px; font-size:12px; letter-spacing:0; text-transform:none; }
+      #game .round-controls button { padding:10px 14px; font-size:16px; letter-spacing:0; text-transform:none; }
       .totals { display:flex; gap:40px; font-size:16px; margin-bottom:6px; }
       .totals b { margin-left:10px; font-size:22px; font-variant-numeric:tabular-nums; }
       .totals span:first-child b { color:#ff4545; } .totals span:nth-child(2) b { color:#50dda5; }
-      #game .player-panel { position:absolute; bottom:0; width:50%; height:320px; box-sizing:border-box; padding:8px 12px; background:#101720; border-top:1px solid #33404e; pointer-events:auto; overflow:visible; }
+      #game .player-panel { position:absolute; top:112px; bottom:0; width:var(--control-width); height:auto; box-sizing:border-box; padding:8px 12px; background:#101720; border-top:1px solid #33404e; pointer-events:auto; overflow:auto; }
       [data-player="spreader"] { left:0; border-right:2px solid #33404e; }
       [data-player="curber"] { right:0; }
-      body.game::after { content:''; position:fixed; left:calc(50% - 1px); top:112px; bottom:320px; width:2px; background:#33404e; pointer-events:none; z-index:9; }
-      .player-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+      body.game { --control-width:clamp(180px,15vw,240px); }
+      body.game::after { content:''; position:fixed; left:calc(50% - 1px); top:112px; bottom:0; width:2px; background:#33404e; pointer-events:none; z-index:9; }
+      .player-top { display:flex; flex-direction:column; align-items:stretch; gap:8px; }
       #game .player-top h3 { margin:0; }
-      .zoom-tools { display:flex; gap:4px; }
-      #game [data-reveal] { margin:6px 0; width:100%; text-align:center; touch-action:none; }
-      .private-controls { display:none; }
-      .player-panel.revealed .private-controls { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(0,1fr); gap:12px; height:224px; }
-      .action-controls, .action-history { scrollbar-width:none; overflow:auto; padding-right:3px; }
+      .zoom-tools { display:flex; gap:8px; }
+      #game button { min-height:48px; padding:10px 14px; font-size:16px; touch-action:manipulation; }
+      #game [data-zoom] { min-width:52px; font-size:22px; }
+      #game [data-zoom="fit"] { font-size:14px; min-width:0; flex:1; padding:8px; }
+      .player-top { margin-bottom:8px; }
+      .player-panel .private-controls { display:grid; grid-template-columns:1fr; gap:12px; height:auto; }
+      .action-controls, .action-history { scrollbar-width:none; overflow:visible; padding-right:0; }
       #game .private-controls h3 { margin:2px 0 4px; }
-      #game .tools { grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; }
-      #game .tools button { font-size:11px; padding:5px; }
-      #game .tools small { font-size:10px; }
+      #game .tools { grid-template-columns:1fr; gap:8px; }
+      #game .tools button { font-size:16px; padding:10px; min-height:68px; }
+      #game .tools small { font-size:12px; }
       #game [id^="g-toast-"] { min-height:14px; margin:4px 0; color:#ffc233; font-size:11px; }
       .pane-help { margin:4px 0; color:#8a98a8; font-size:10px; }
       #game #g-chart { display:none; }
       #g-over { z-index:20; }
-      @media(max-width:800px) { .player-panel.revealed .private-controls { grid-template-columns:1fr; height:auto; } }
-      @media(max-width:800px) { #game .tools { grid-template-columns:repeat(2,minmax(0,1fr)); } .totals { gap:16px; font-size:13px; } }
-      .map-markers { position:absolute; top:112px; bottom:320px; width:50%; overflow:hidden; pointer-events:none; }
-      [data-map="spreader"] { left:0; } [data-map="curber"] { right:0; }
+      @media(max-width:800px) { .player-panel .private-controls { grid-template-columns:1fr; overflow:auto; } }
+      @media(max-width:800px) { #game .tools { grid-template-columns:1fr; } .totals { gap:16px; font-size:13px; } }
+      .map-markers { position:absolute; top:112px; bottom:0; width:calc(50% - var(--control-width)); overflow:hidden; pointer-events:none; }
+      [data-map="spreader"] { left:var(--control-width); } [data-map="curber"] { right:var(--control-width); }
       #game .action-pin { position:absolute;  padding:5px 9px; border:2px solid #ff9655; border-radius:8px; background:#171b25; box-shadow:0 2px 12px #000; text-align:center; pointer-events:auto; font-size:12px; min-width:94px; }
       #game .action-pin.curber { border-color:#59d3ff; }
       .action-pin::after { content:''; position:absolute; left:calc(50% - 5px); bottom:-8px; width:8px; height:8px; border-radius:50%; background:#fff; box-shadow:0 0 0 3px #111; }
       .action-pin span { display:block; font-size:10px; color:#d5dfeb; }
       #game .action-pin[data-state="pending"] { border-style:dashed; }
       #game .action-pin[data-state="finished"] { opacity:.55; }
-      #game .interactive-tools { display:grid; grid-template-columns:2fr 1fr; gap:6px; margin:6px 0; }
-      #game [data-rally] { position:relative; border-color:#758ba3; background:#243c50; touch-action:none; user-select:none; }
-      #game [data-rally]:active { background:#365d77; transform:scale(.98); }
-      .tap-reward { position:absolute; right:10px; top:8px; color:#ffe183; font-size:18px; font-weight:700; }
-      .effort-track { height:4px; margin-bottom:8px; background:#26323e; border-radius:4px; overflow:hidden; }
-      .effort-track i { display:block; height:100%; width:0; background:#ffe183; transition:width .1s; }
       .action-area { position:absolute;  border:2px solid #ff9655; border-radius:50%; background:#ff965530; box-sizing:border-box; }
       .action-area.curber { border-color:#59d3ff; background:#59d3ff25; }
       .action-area[data-state="pending"] { border-style:dashed; background:none; }
@@ -433,9 +432,7 @@
       #g-menu button:hover { border-color: #5ad1ff; background: #19202a; }
       #g-menu button b { display: block; margin-bottom: 6px; font-size: 18px; }
       #g-menu button small { color: #8f9bad; line-height: 1.4; }
-      body.one-player [data-player="curber"] .private-controls,
-      body.one-player [data-player="curber"] [data-reveal] { display: none !important; }
-      #g-feed { display: none; position: fixed; z-index:20; top: 112px; right: 0; bottom: 320px; width: 340px; box-sizing: border-box; padding: 14px 16px; overflow: auto; background: #101720; border-left: 2px solid #33404e; font-size: 13px; line-height: 1.5; pointer-events: auto; }
+      #g-feed { display: none; position: fixed; z-index:20; top: 112px; right: 0; bottom: 0; width: 280px; box-sizing: border-box; padding: 14px 16px; overflow: auto; background: #101720; border-left: 2px solid #33404e; font-size: 13px; line-height: 1.5; pointer-events: auto; }
       body.one-player #g-feed { display: block; }
       #g-feed h4 { margin: 0 0 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #5ee6a8; }
       #g-feed ul { margin: 0; padding: 0; list-style: none; }
@@ -446,8 +443,8 @@
       @keyframes g-flash { from { background: rgba(94, 230, 168, 0.35); } to { background: transparent; } }
       body.one-player::after { display: none; }
       body.one-player [data-player="curber"] { display: none; }
-      body.one-player #game .player-panel[data-player="spreader"] { width: 100%; border-right: 0; }
-      body.one-player #game [data-map="spreader"] { width:calc(100% - 340px); }
+      body.one-player #game .player-panel[data-player="spreader"] { width:var(--control-width); border-right:1px solid #33404e; }
+      body.one-player #game [data-map="spreader"] { width:calc(100% - var(--control-width) - 280px); }
       body.one-player [data-map="curber"] { display:none; }
     </style>
   </head>
@@ -485,30 +482,26 @@
       <div id="g-feed"><h4>What the computer did</h4><ul id="g-feed-list"><li>Watching the city…</li></ul></div>
       <section class="player-panel" data-player="spreader">
         <div class="player-top"><h3>Spreader</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in spreader">+</button><button data-zoom="1.25" aria-label="Zoom out spreader">-</button><button data-zoom="fit">Whole map</button></div></div>
-        <button data-reveal aria-expanded="false">Show / hide my points &amp; controls</button>
         <div class="private-controls"><div class="action-controls"><h3>Action points <b id="g-sp">0</b></h3>
-        <div class="interactive-tools"><button data-rally>Rally supporters<small>Tap rapidly or hold: +0.3 points per registered tap</small><span class="tap-reward"></span></button><button data-repeat>Repeat here<small>Choose a map location first</small></button></div>
-        <div class="effort-track"><i id="g-effort-spreader"></i></div>
         <div class="tools">
         <button data-act="party">Start a party (10 pax)<small>Q | 10m | click map | <span data-cost></span></small></button>
         <button data-act="antimask">Antimask conspiracy<small>W | +40% transmission | 5m delay | <span data-cost></span></small></button>
         <button data-act="antivaxx">Antivaxx conspiracy<small>E | lower uptake | 5m delay | <span data-cost></span></small></button>
         <button data-act="sickwork">Send someone sick to work<small>R | 15m | click near a case | <span data-cost></span></small></button>
+        <button data-act="fakenews">Spread fake news<small>A | +20% contact transmission; less isolation | 3m delay | <span data-cost></span></small><small>Harmful false claim: drinking bleach cures illness. It does not.</small></button>
         </div><p id="g-toast-spreader"></p></div><aside class="action-history"><h3>My actions &amp; effects <small>Click a location to zoom to it</small></h3><div id="g-effects-spreader" class="effect-list"></div></aside></div>
         <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
       </section>
       <section class="player-panel" data-player="curber">
         <div class="player-top"><h3>Curber</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in curber">+</button><button data-zoom="1.25" aria-label="Zoom out curber">-</button><button data-zoom="fit">Whole map</button></div></div>
-        <button data-reveal aria-expanded="false">Show / hide my points &amp; controls</button>
         <div class="private-controls"><div class="action-controls"><h3>Action points <b id="g-cp">0</b></h3>
-        <div class="interactive-tools"><button data-rally>Mobilise volunteers<small>Tap rapidly or hold: +0.3 points per registered tap</small><span class="tap-reward"></span></button><button data-repeat>Repeat here<small>Choose a map location first</small></button></div>
-        <div class="effort-track"><i id="g-effort-curber"></i></div>
         <div class="tools">
         <button data-act="lockdown">Lockdown<small>I | 30m | click map | <span data-cost></span></small></button>
         <button data-act="vaccines">Free vaccines<small>O | 2m rollout | 5m protection | <span data-cost></span></small></button>
         <button data-act="distancing">Social distancing<small>P | -45% transmission | 1m delay | <span data-cost></span></small></button>
         <button data-act="hospitals">New hospitals<small>L | 10m build | isolate cases | <span data-cost></span></small></button>
         <button data-act="newvaccine">New vaccine<small>K | 20m research | 90% protection | <span data-cost></span></small></button>
+        <button data-act="education">Health education<small>J | Monitor health, seek care and isolate | -20% contact transmission | 2m delay | <span data-cost></span></small></button>
         </div><p id="g-toast-curber"></p></div><aside class="action-history"><h3>My actions &amp; effects <small>Click a location to zoom to it</small></h3><div id="g-effects-curber" class="effect-list"></div></aside></div>
         <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
       </section>

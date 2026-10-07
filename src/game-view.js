@@ -1,23 +1,26 @@
 // Shared geometry and visibility rules for the two player views.
 export const GAME_HEADER = 112;
-export const GAME_CONTROLS = 320;
+export const GAME_CONTROLS = 0;
 export const SIDES = ['spreader', 'curber'];
 // In the one-player game there is one map, the Spreader's, across the whole width.
-export const GAME_LOG = 340; // width of the notification column beside the map in the one-player game
+export const GAME_LOG = 280; // width of the notification column beside the map in the one-player game
 let single = false;
 export const setSinglePlayer = (on) => { single = on; };
 export const isSinglePlayer = () => single;
 export const activeSides = () => (single ? ['spreader'] : SIDES);
+export function controlWidth(width) { return Math.max(180, Math.min(240, width * 0.15)); }
 export function gameRect(side, width, height) {
-  const left = single ? width - GAME_LOG : Math.floor(width / 2);
-  return { x: side === 'spreader' ? 0 : left, y: GAME_HEADER,
-    width: side === 'spreader' ? left : width - left,
-    height: Math.max(1, height - GAME_HEADER - GAME_CONTROLS) };
+  const rail = controlWidth(width), half = Math.floor(width / 2);
+  return { x: side === 'spreader' ? rail : half, y: GAME_HEADER,
+    width: single ? Math.max(1, width - rail - GAME_LOG) : Math.max(1, (side === 'spreader' ? half : width - half) - rail),
+    height: Math.max(1, height - GAME_HEADER) };
 }
 export function sideAt(x, y, width, height) {
-  if (x < 0 || x >= width || y < GAME_HEADER || y >= height - GAME_CONTROLS) return null;
-  if (single && x >= width - GAME_LOG) return null;
-  return single || x < Math.floor(width / 2) ? 'spreader' : 'curber';
+  for (const side of activeSides()) {
+    const r = gameRect(side, width, height);
+    if (x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height) return side;
+  }
+  return null;
 }
 export function ownsAction(side, kind, actions) { return actions[kind]?.side === side; }
 export function privateOverlays(game, side) {
