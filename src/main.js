@@ -1362,6 +1362,13 @@ if (game) {
   // Real-time RPLIDAR C1 touch engine for table projection. Only ?game=table: plain ?game is the mouse
   // and keyboard, and a laptop in the room must not have the table's lidar pressing its buttons.
   if (onTableGame) lidarTouch = new LidarTouchController({
+    // A list that has more than fits (the action panels, the power cards): a finger swiped along it scrolls it.
+    scrollAt: (x, y) => {
+      for (let e = document.elementFromPoint(x, y); e && e !== document.body; e = e.parentElement) {
+        if (e.scrollHeight > e.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(e).overflowY)) return e;
+      }
+      return null;
+    },
     onTap: (side, u, v, screenX, screenY) => {
       if (calibrating) return; // the finger on the calibration circle is not playing
       const under = document.elementFromPoint(screenX, screenY)?.closest('button, [data-home], [data-reveal]');

@@ -61,6 +61,11 @@ export class LidarTouchController {
     // has already clicked. It can click again once that spot has been empty for this long.
     this.sameTap = { mm: 80, ms: 600 };
     this.lastTaps = []; // { x, y, at }
+    // Swiping a list: (screenX, screenY) => the scrolling element under that point, or null. A touch
+    // that lands on one does not press at once. If it then travels more than this.swipe pixels it
+    // scrolls the list by as much as it moves; if it lifts without having travelled, it was a press.
+    this.scrollAt = options.scrollAt || null;
+    this.swipe = options.swipe || 28; // px
     this.onTap = options.onTap || null; // (side, u, v, screenX, screenY) => void
     this.activeTouches = new Map(); // id -> { id, u, v, side, startTime, x, y }
     this.ws = null;
@@ -257,9 +262,25 @@ export class LidarTouchController {
         touch.v = normV;
         touch.side = normU < 0.5 ? 'spreader' : 'curber';
         liveTouchIds.add(id);
+        if (touch.list) {
+          const y = normV * window.innerHeight;
+          touch.travel += Math.abs(y - touch.lastY);
+          if (touch.travel > this.swipe) touch.swiping = true;
+          // The list follows the finger: a finger moving up the table brings up what is below.
+          if (touch.swiping) touch.list.scrollTop -= y - touch.lastY;
+          touch.lastY = y;
+        }
       } else {
         // Did not match: over once it has gone unseen for longer than this.gap.
-        if (now - touch.lastSeen > this.gap) this.activeTouches.delete(id);
+        if (now - touch.lastSeen > this.gap) {
+          this.activeTouches.delete(id);
+          // On a list a press waits for the lift, so that a swipe is not also a press.
+          if (touch.list && !touch.swiping && !touch.pressed && touch.sightings >= 2) {
+            touch.pressed = true;
+            this.lastTaps.push({ x: touch.x, y: touch.y, at: now });
+            this.handleTap(touch);
+          }
+        }
       }
     }
 
@@ -280,6 +301,10 @@ export class LidarTouchController {
           lastSeen: now,
           sightings: 1,
           pressed: false,
+          list: this.scrollAt?.(normU * window.innerWidth, normV * window.innerHeight) || null,
+          lastY: normV * window.innerHeight,
+          travel: 0,
+          swiping: false,
         };
         this.activeTouches.set(id, touch);
         // Add visual ripple
@@ -298,7 +323,7 @@ export class LidarTouchController {
         before.x = touch.x;
         before.y = touch.y;
         touch.pressed = true;
-      } else if (!touch.pressed && touch.sightings >= 2) {
+      } else if (!touch.pressed && !touch.list && touch.sightings >= 2) {
         touch.pressed = true;
         this.lastTaps.push({ x: touch.x, y: touch.y, at: now });
         this.handleTap(touch);

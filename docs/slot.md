@@ -95,6 +95,8 @@ page: the laptop streams the finished pictures to the projector and both TVs. St
 3. **Play.** A touch presses what is under it as soon as the finger is down (about 0.1 s), once per touch: the menu, the action buttons, the
    power cards, Pause and Resume, End game. In a solo round the whole table is the one player's.
    The seismic trench takes two taps, its start and then its end (the mouse drags it).
+   A side list with more than fits shows a blue scrollbar: swipe a finger along the list to
+   scroll it. On such a list a press counts when the finger lifts, so that a swipe is not a press.
    The left TV turns to the 3D city in a solo round and the right one follows the role.
 
 4. **Hand the room back** with `npm run room idle`, then stop the server.

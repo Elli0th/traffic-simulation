@@ -359,6 +359,10 @@
       .shared-stats h2 { display:flex; justify-content:space-between; align-items:center; height:48px; margin:0; }
       #game .shared-stats .totals { position:absolute; top:20px; left:160px; margin:0; }
       #game #g-status { margin:5px 0 7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      /* A list with more than fits shows that it does: on the table there is no mouse to find out with. */
+      #game .player-panel::-webkit-scrollbar, #g-feed::-webkit-scrollbar, #game .tools::-webkit-scrollbar, #game .action-history::-webkit-scrollbar { width:10px; }
+      #game .player-panel::-webkit-scrollbar-thumb, #g-feed::-webkit-scrollbar-thumb, #game .tools::-webkit-scrollbar-thumb, #game .action-history::-webkit-scrollbar-thumb { background:#5ad1ffaa; border-radius:5px; }
+      #game .player-panel::-webkit-scrollbar-track, #g-feed::-webkit-scrollbar-track, #game .tools::-webkit-scrollbar-track, #game .action-history::-webkit-scrollbar-track { background:#ffffff14; }
       .round-controls { display:flex; align-items:center; gap:16px; margin-left:auto; }
       /* Solo has its own Pause and Quit: only the clock stays, beside them, clear of the totals. */
       body.one-player .round-controls button { display:none; }
