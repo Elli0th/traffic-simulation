@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Outbreak Tactical Television Dashboard</title>
+    <style>
+      :root {
+        --bg: #07090d;
+        --card-bg: rgba(16, 22, 32, 0.85);
+        --border: rgba(255, 255, 255, 0.12);
+        --text: #e2e8f0;
+        --text-dim: #8a99ad;
+        --accent: #ff3b5c;
+        --accent-glow: rgba(255, 59, 92, 0.35);
+      }
+
+      body.side-curber {
+        --accent: #00e5a3;
+        --accent-glow: rgba(0, 229, 163, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        overflow: hidden;
+        height: 100vh;
+        width: 100vw;
+        display: flex;
+        flex-direction: column;
+        user-select: none;
+      }
+
+      /* Background animated grid / glow */
+      .bg-glow {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(circle at 50% 0%, var(--accent-glow) 0%, transparent 65%);
+        opacity: 0.45;
+        transition: background 0.8s ease;
+      }
+
+      /* Top Header */
+      header {
+        position: relative;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 36px;
+        background: rgba(10, 14, 20, 0.95);
+        border-bottom: 2px solid var(--border);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      }
+
+      .faction-badge {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .faction-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 26px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 2px solid var(--accent);
+        box-shadow: 0 0 16px var(--accent-glow);
+      }
+
+      .faction-title h1 {
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      .faction-title span {
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+
+      .header-stats {
+        display: flex;
+        gap: 40px;
+        align-items: center;
+      }
+
+      .stat-block {
+        text-align: right;
+      }
+
+      .stat-block small {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--text-dim);
+      }
+
+      .stat-block b {
+        font-size: 32px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: #fff;
+      }
+
+      .timer-badge {
+        padding: 8px 18px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        text-align: center;
+      }
+
+      .timer-badge b {
+        color: #ffc233;
+      }
+
+      /* Main Dashboard Grid */
+      main {
+        position: relative;
+        z-index: 5;
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto 1fr;
+        gap: 20px;
+        padding: 24px 36px;
+        overflow: hidden;
+      }
+
+      /* Action Feed Banner */
+      .action-feed {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+
+      .action-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-left: 6px solid var(--accent);
+        border-radius: 12px;
+        padding: 16px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      }
+
+      .action-card.enemy {
+        border-left-color: #ff9900;
+      }
+
+      .action-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .action-card-header span {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--text-dim);
+      }
+
+      .status-pill {
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        padding: 3px 8px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+      }
+
+      .status-pill.active {
+        background: var(--accent);
+        color: #000;
+      }
+
+      .action-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: #fff;
+      }
+
+      .action-details {
+        font-size: 13px;
+        color: var(--text-dim);
+        display: flex;
+        justify-content: space-between;
+      }
+
+      /* Tactical Intel Columns */
+      .intel-panel {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 20px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        overflow: hidden;
+      }
+
+      .intel-panel h2 {
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .intel-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        flex: 1;
+      }
+
+      .intel-row {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 8px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .intel-row .name {
+        font-size: 16px;
+        font-weight: 600;
+        color: #fff;
+      }
+
+      .intel-row .sub {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-top: 2px;
+      }
+
+      .intel-badge {
+        font-size: 14px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .intel-badge.hot {
+        background: rgba(255, 59, 92, 0.2);
+        color: #ff5c7c;
+        border: 1px solid #ff5c7c;
+      }
+
+      .intel-badge.safe {
+        background: rgba(0, 229, 163, 0.2);
+        color: #00e5a3;
+        border: 1px solid #00e5a3;
+      }
+
+      /* Recommendation Banner */
+      .rec-banner {
+        background: rgba(255, 194, 51, 0.08);
+        border: 1px solid rgba(255, 194, 51, 0.3);
+        border-radius: 10px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .rec-banner .icon {
+        font-size: 24px;
+      }
+
+      .rec-banner .text {
+        font-size: 13px;
+        color: #ffe08a;
+        line-height: 1.4;
+      }
+
+      .rec-banner .text b {
+        display: block;
+        font-size: 15px;
+        color: #fff;
+      }
+
+      /* Action Deck Cards */
+      .deck-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+      }
+
+      body.side-curber .deck-grid {
+        grid-template-columns: repeat(5, 1fr);
+      }
+
+      .deck-card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 80px;
+      }
+
+      .deck-card.ready {
+        border-color: var(--accent);
+        background: rgba(255, 255, 255, 0.07);
+      }
+
+      .deck-card .title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #fff;
+        line-height: 1.2;
+      }
+
+      .deck-card .cost {
+        font-size: 11px;
+        color: var(--text-dim);
+        margin-top: 4px;
+      }
+
+      .deck-card .cd {
+        font-size: 11px;
+        font-weight: 700;
+        color: #ffc233;
+        align-self: flex-end;
+      }
+
+      /* Footer Ticker */
+      footer {
+        position: relative;
+        z-index: 10;
+        padding: 8px 36px;
+        background: #090c10;
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--text-dim);
+      }
+
+      .live-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #00e5a3;
+        margin-right: 8px;
+        box-shadow: 0 0 8px #00e5a3;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+      }
+    </style>
+  </head>
+  <body class="side-spreader">
+    <div class="bg-glow"></div>
+
+    <header>
+      <div class="faction-badge">
+        <div class="faction-icon" id="f-icon">☣️</div>
+        <div class="faction-title">
+          <h1 id="f-title">Spreader Strategic Command</h1>
+          <span id="f-subtitle">Gothenburg Outbreak Offensive · Television 1</span>
+        </div>
+      </div>
+
+      <div class="header-stats">
+        <div class="stat-block">
+          <small>Infection Share</small>
+          <b id="m-share">0.0%</b>
+        </div>
+        <div class="stat-block">
+          <small>Active Cases</small>
+          <b id="m-active" style="color: #ff5c7c">0</b>
+        </div>
+        <div class="stat-block">
+          <small>Immune / Vac</small>
+          <b id="m-immune" style="color: #00e5a3">0</b>
+        </div>
+        <div class="timer-badge">
+          <small style="display: block; font-size: 10px; text-transform: uppercase; color: #8a99ad">Timeline</small>
+          <b id="m-day">DAY 1</b> &bull; <span id="m-timer" style="font-weight: 700; font-size: 20px; color: #fff">3:00</span>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- Action Feed -->
+      <section class="action-feed">
+        <div class="action-card" id="card-my-action">
+          <div class="action-card-header">
+            <span id="label-my-action">My Last Action</span>
+            <div class="status-pill active" id="status-my-action">Active</div>
+          </div>
+          <div class="action-title" id="title-my-action">Waiting for first move...</div>
+          <div class="action-details">
+            <span id="target-my-action">Target: Setup phase</span>
+            <span id="time-my-action">Just now</span>
+          </div>
+        </div>
+
+        <div class="action-card enemy" id="card-enemy-action">
+          <div class="action-card-header">
+            <span id="label-enemy-action">Opponent Counter-Measure</span>
+            <div class="status-pill" id="status-enemy-action">Detected</div>
+          </div>
+          <div class="action-title" id="title-enemy-action">No counter-measures detected</div>
+          <div class="action-details">
+            <span id="target-enemy-action">Status: Monitoring defense grid</span>
+            <span id="time-enemy-action">-</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Left Column: Actionable Target / Hotspot Intel -->
+      <section class="intel-panel">
+        <h2 id="panel-targets-title">
+          <span>Actionable Intel &bull; High-Priority Targets</span>
+          <span id="f-points" style="color: var(--accent); font-weight: 800; font-size: 16px">0 PTS</span>
+        </h2>
+
+        <div class="rec-banner">
+          <div class="icon">💡</div>
+          <div class="text">
+            <b>Tactical Recommendation</b>
+            <span id="rec-text">Click a busy downtown street to seed patient zero.</span>
+          </div>
+        </div>
+
+        <div class="intel-list" id="intel-list">
+          <!-- Dynamically populated rows -->
+        </div>
+      </section>
+
+      <!-- Right Column: System Telemetry & Action Deck -->
+      <section class="intel-panel">
+        <h2>
+          <span>Strategic Deck &amp; Readiness</span>
+          <span style="font-size: 12px; color: var(--text-dim)">HOTKEYS: Q, W, E, R / I, O, P, L, K</span>
+        </h2>
+
+        <div class="deck-grid" id="deck-grid">
+          <!-- Dynamically populated action cards -->
+        </div>
+
+        <h2 style="margin-top: 8px">
+          <span>Outbreak Dynamics &bull; Healthcare Stress</span>
+        </h2>
+
+        <div class="intel-list" id="secondary-intel">
+          <!-- Secondary stats / hospital / transit -->
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div>
+        <span class="live-dot"></span>
+        <span id="conn-status">LIVE TELEMETRY &bull; Connected to Gothenburg Simulation Core</span>
+      </div>
+      <div>
+        <span>AIXIA Hackathon Outbreak Dashboard &bull; Room Screen Sync</span>
+      </div>
+    </footer>
+
+    <script type="module">
+      import * as relay from './src/room/relay.js';
+
+      const params = new URLSearchParams(location.search);
+      // 'spreader' or 'curber' (TV 1 = spreader, TV 2 = curber)
+      const side = params.get('side') || (params.get('tv') === '2' ? 'curber' : 'spreader');
+      document.body.className = `side-${side}`;
+
+      // Set side-specific labels
+      const isSpreader = side === 'spreader';
+      document.getElementById('f-icon').textContent = isSpreader ? '☣️' : '🛡️';
+      document.getElementById('f-title').textContent = isSpreader ? 'Spreader Strategic Command' : 'Curber Public Health Defense';
+      document.getElementById('f-subtitle').textContent = isSpreader
+        ? 'Gothenburg Outbreak Offensive · Television 1 (Left)'
+        : 'Epidemic Containment Operations · Television 2 (Right)';
+      document.getElementById('label-my-action').textContent = isSpreader ? 'Last Spreader Strike' : 'Last Curber Defense';
+      document.getElementById('label-enemy-action').textContent = isSpreader ? 'Curber Counter-Measure Detected' : 'Spreader Breach Detected';
+      document.getElementById('panel-targets-title').firstElementChild.textContent = isSpreader
+        ? 'Actionable Intel · Unprotected Targets'
+        : 'Actionable Intel · Outbreak Hotspots';
+
+      let lastState = null;
+
+      function render(state) {
+        if (!state) return;
+        lastState = state;
+
+        // Header Metrics
+        const c = state.counts;
+        const total = Math.max(1, state.population || 600000);
+        document.getElementById('m-share').textContent = `${Math.round((c.share || 0) * 1000) / 10}%`;
+        document.getElementById('m-active').textContent = (c.people?.active || c.active || 0).toLocaleString();
+        document.getElementById('m-immune').textContent = (c.people?.immune || c.r || 0).toLocaleString();
+        document.getElementById('m-day').textContent = `DAY ${state.day || 1}`;
+
+        const left = Math.max(0, state.timeLeft || 0);
+        document.getElementById('m-timer').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+        document.getElementById('f-points').textContent = `${isSpreader ? state.points?.spreader || 0 : state.points?.curber || 0} PTS`;
+
+        // Last Actions
+        const myAct = isSpreader ? state.lastActions?.spreader : state.lastActions?.curber;
+        const enemyAct = isSpreader ? state.lastActions?.curber : state.lastActions?.spreader;
+
+        if (myAct && myAct.label) {
+          document.getElementById('title-my-action').textContent = myAct.label;
+          document.getElementById('target-my-action').textContent = `Target: ${myAct.target || 'Metropolitan'}`;
+          document.getElementById('time-my-action').textContent = myAct.timeAgo;
+          const statusPill = document.getElementById('status-my-action');
+          statusPill.textContent = myAct.status;
+          statusPill.className = `status-pill ${myAct.active ? 'active' : ''}`;
+        }
+
+        if (enemyAct && enemyAct.label) {
+          document.getElementById('title-enemy-action').textContent = enemyAct.label;
+          document.getElementById('target-enemy-action').textContent = `Location: ${enemyAct.target || 'Metropolitan'}`;
+          document.getElementById('time-enemy-action').textContent = enemyAct.timeAgo;
+          const statusPill = document.getElementById('status-enemy-action');
+          statusPill.textContent = enemyAct.status;
+          statusPill.className = `status-pill ${enemyAct.active ? 'active' : ''}`;
+        }
+
+        // Recommendation
+        const rec = isSpreader ? state.spreaderIntel?.recommended : state.curberIntel?.recommended;
+        if (rec) document.getElementById('rec-text').textContent = rec;
+
+        // Targets / Hotspots List
+        const listEl = document.getElementById('intel-list');
+        listEl.innerHTML = '';
+
+        if (isSpreader && state.spreaderIntel?.targets) {
+          state.spreaderIntel.targets.forEach((t) => {
+            const row = document.createElement('div');
+            row.className = 'intel-row';
+            row.innerHTML = `
+              <div>
+                <div class="name">${t.district}</div>
+                <div class="sub">${t.susceptible.toLocaleString()} unprotected residents</div>
+              </div>
+              <div class="intel-badge ${t.locked ? 'safe' : 'hot'}">${t.locked ? 'LOCKED DOWN' : 'PRIME TARGET'}</div>
+            `;
+            listEl.appendChild(row);
+          });
+        } else if (!isSpreader && state.curberIntel?.hotspots) {
+          state.curberIntel.hotspots.forEach((h) => {
+            const row = document.createElement('div');
+            row.className = 'intel-row';
+            row.innerHTML = `
+              <div>
+                <div class="name">${h.district}</div>
+                <div class="sub">${h.cases.toLocaleString()} active infections</div>
+              </div>
+              <div class="intel-badge ${h.locked ? 'safe' : 'hot'}">${h.recommendation}</div>
+            `;
+            listEl.appendChild(row);
+          });
+        }
+
+        // Action Deck
+        const deck = isSpreader ? state.spreaderIntel?.deck : state.curberIntel?.deck;
+        const deckEl = document.getElementById('deck-grid');
+        deckEl.innerHTML = '';
+        if (deck) {
+          deck.forEach((card) => {
+            const d = document.createElement('div');
+            d.className = `deck-card ${card.ready && card.affordable ? 'ready' : ''}`;
+            d.innerHTML = `
+              <div>
+                <div class="title">${card.label}</div>
+                <div class="cost">${card.cost} pts</div>
+              </div>
+              <div class="cd">${card.cooldownSec > 0 ? `${Math.ceil(card.cooldownSec)}s` : (card.affordable ? 'READY' : 'LOCKED')}</div>
+            `;
+            deckEl.appendChild(d);
+          });
+        }
+
+        // Secondary Telemetry
+        const secEl = document.getElementById('secondary-intel');
+        secEl.innerHTML = '';
+
+        if (isSpreader) {
+          const transitCases = state.spreaderIntel?.transitCases || 0;
+          const activeParties = state.spreaderIntel?.activeParties || 0;
+          secEl.innerHTML = `
+            <div class="intel-row">
+              <div>
+                <div class="name">Public Transit Super-Spreader Vectors</div>
+                <div class="sub">Trams & Buses spreading infection across Gothenburg lines</div>
+              </div>
+              <div class="intel-badge hot">${transitCases.toLocaleString()} transit cases</div>
+            </div>
+            <div class="intel-row">
+              <div>
+                <div class="name">Active Super-Spreader Gatherings</div>
+                <div class="sub">Parties currently transmitting in crowded zones</div>
+              </div>
+              <div class="intel-badge ${activeParties > 0 ? 'hot' : ''}">${activeParties} active parties</div>
+            </div>
+          `;
+        } else {
+          const hosp = state.curberIntel?.hospitalized || 0;
+          const cap = state.curberIntel?.hospitalCapacity || 9000;
+          const stress = state.curberIntel?.hospitalStress || 0;
+          const vacStatus = state.curberIntel?.vaccineUptakeStatus || '85%';
+          secEl.innerHTML = `
+            <div class="intel-row">
+              <div>
+                <div class="name">Hospital &amp; ICU Bed Saturation</div>
+                <div class="sub">${hosp.toLocaleString()} hospitalized of ${cap.toLocaleString()} capacity</div>
+              </div>
+              <div class="intel-badge ${stress > 70 ? 'hot' : 'safe'}">${stress}% SATURATION</div>
+            </div>
+            <div class="intel-row">
+              <div>
+                <div class="name">Vaccine Uptake &amp; Resistance</div>
+                <div class="sub">Public willingness to accept vaccination</div>
+              </div>
+              <div class="intel-badge ${vacStatus.includes('25%') ? 'hot' : 'safe'}">${vacStatus}</div>
+            </div>
+          `;
+        }
+      }
+
+      // Relay WebSocket / BroadcastChannel listener
+      relay.on('game_sync', (data) => render(data));
+      relay.on('action', (act) => {
+        if (!lastState) return;
+        if (act.side === 'spreader') lastState.lastActions.spreader = act;
+        else lastState.lastActions.curber = act;
+        render(lastState);
+      });
+    </script>
+  </body>
+</html>

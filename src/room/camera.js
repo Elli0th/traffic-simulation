@@ -295,8 +295,8 @@ function drawPretend() {
     pctx.arc(x * W, y * H, 14, 0, Math.PI * 2);
     pctx.stroke();
   }
-  pctx.fillStyle = '#ff8a5e';
   for (const o of source.objects) {
+    pctx.fillStyle = o.h < 60 ? '#7be04a' : '#ff8a5e'; // something flat, or a cup
     pctx.beginPath();
     pctx.arc(o.x * W, o.y * H, o.r * W, 0, Math.PI * 2);
     pctx.fill();
@@ -309,7 +309,7 @@ pretend.addEventListener('click', (e) => {
   const y = (e.clientY - box.top) / box.height;
   const hit = source.objects.findIndex((o) => Math.hypot(o.x - x, (o.y - y) / aspect) < o.r * 1.3);
   if (hit >= 0) source.objects.splice(hit, 1);
-  else source.objects.push({ x, y, r: 0.028, h: 95 });
+  else source.objects.push({ x, y, r: 0.028, h: e.shiftKey ? 30 : 95 });
 });
 $('onmarker').addEventListener('click', () => {
   if (!calibrator || calibrator.step >= MARKERS.length) return;

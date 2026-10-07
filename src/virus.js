@@ -2,7 +2,7 @@
 // Fictional accelerated gameplay: timed social actions, vaccination and isolation.
 // Parties add group contacts; ordinary exposure follows pedestrian proximity.
 
-import { mulberry32 } from './geometry.js';
+import { mulberry32, pointAt } from './geometry.js';
 
 export const S = 0; // susceptible
 export const E = 1; // exposed: carrying it but not yet infectious
@@ -23,11 +23,59 @@ export const ACTIONS = {
 
 const TICK = 1; // simulated seconds between contact passes
 
+// The virus runs on its own, faster clock: a 3 minute round at 30x is 5400 simulated seconds, and it
+// stands for 60 days, so one game day is 90 simulated seconds. Timings are the original COVID-19 strain:
+// about 3 days before someone is infectious, about 8 days infectious (the first of them before symptoms),
+// and an R0 of about 2.5 in an unprotected city.
+export const DAY = 90;
+export const POPULATION = 600000; // Göteborg municipality
+export const IFR = 0.007; // infection fatality rate of the original strain, all ages
+export const HOSPITAL = 0.05; // share of cases who need a hospital bed
+
+const CAR_R = 60; // metres around where a car trip starts or ends: who the driver has been among, and meets
+const CAR_VISIT = 90; // seconds of close contact a driver carrying the virus has where the trip ends
+const STOP_R = 40; // metres around a stop that count as boarding or waiting
+const TRANSIT_MIX = 4; // being inside a vehicle is this many times as risky as passing on the street
+const DECAY = 0.998; // per second: an infectious passenger gets off, and the vehicle clears
+const STOP = {};
+const DENSITY_CELL = 150;
+
+// Floor area is what homes and workplaces were sampled by, so how many of them fall in a square says how
+// built-up it is. The result is each occupied square's count against the average, softened and clamped.
+function buildDensity(sim) {
+  const counts = new Map();
+  for (const list of [sim?.homes ?? [], sim?.works ?? []]) {
+    for (const node of list) {
+      const n = sim.nodes[node];
+      const key = Math.floor(n.x / DENSITY_CELL) * 65537 + Math.floor(n.z / DENSITY_CELL);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  let sum = 0;
+  for (const v of counts.values()) sum += v;
+  const mean = sum / Math.max(1, counts.size);
+  const out = new Map();
+  for (const [key, v] of counts) out.set(key, Math.max(0.5, Math.min(2.5, Math.sqrt(v / mean))));
+  return out;
+}
+
 export class Outbreak {
-  constructor(people, { seed = 11 } = {}) {
+  constructor(people, { seed = 11, population = POPULATION, sim = people.sim, trams = null } = {}) {
     this.people = people;
     this.rand = mulberry32(seed);
     this.agents = people.agents;
+    this.sim = sim;
+    this.trams = trams;
+    this.fromTransit = 0; // cases caught on or around a tram or bus
+    this.fromCars = 0; // cases brought by someone arriving by car
+    this.rate = 0;
+    if (sim) {
+      sim.onLaunch = (car, from) => this.board(car, from);
+      sim.onArrive = (car) => this.alight(car);
+    }
+    this.density = buildDensity(sim);
+    this.population = population;
+    this.scale = population / this.agents.length; // real people each simulated person stands for
     for (const p of this.agents) {
       p.inf = S;
       p.infT = 0;
@@ -49,8 +97,7 @@ export class Outbreak {
     this.points = { spreader: 10, curber: 20 };
     this.virus = { spread: 1, reach: 1, stealth: 1 }; // upgrade multipliers
     this.level = { spread: 0, reach: 0, stealth: 0 };
-    // Tuned so an unchecked outbreak sweeps much of the city in about 90 simulated minutes (3 minutes at 30x).
-    this.base = { beta: 0.1, reach: 18, incubation: 90, infectious: 1800 };
+    this.base = { beta: 0.03, reach: 18, incubation: 3 * DAY, infectious: 8 * DAY };
     this.effects = [];
     this.actionLog = [];
     this.rallyAt = { spreader: -Infinity, curber: -Infinity };
@@ -72,7 +119,20 @@ export class Outbreak {
       c[p.inf]++;
       if (p.iso) iso++;
     }
-    return { s: c[S], e: c[E], i: c[I], r: c[R], iso, active: c[E] + c[I], ever: this.ever, share: this.ever / this.total };
+    const k = this.scale;
+    return {
+      s: c[S], e: c[E], i: c[I], r: c[R], iso, active: c[E] + c[I], ever: this.ever, share: this.ever / this.total,
+      // The same, in real people.
+      people: { active: Math.round((c[E] + c[I]) * k), ever: Math.round(this.ever * k), hospital: Math.round(c[I] * k * HOSPITAL), dead: Math.round(this.ever * k * IFR), immune: Math.round(c[R] * k) },
+    };
+  }
+
+  // How crowded the buildings around a point are, against the city average: 1 is typical. Dense blocks
+  // of flats and offices mean more indoor mixing than the street counts alone show.
+  crowding(x, z) {
+    const d = this.density;
+    if (!d.size) return 1; // no map to judge by
+    return d.get(Math.floor(x / DENSITY_CELL) * 65537 + Math.floor(z / DENSITY_CELL)) ?? 0.5;
   }
 
   // ----- player actions: each returns true if it was done -----
@@ -91,7 +151,7 @@ export class Outbreak {
     let n = 0;
     for (const p of this.agents) {
       if (p.inf !== S || p.vac || Math.hypot(p.x - x, p.z - z) > r) continue;
-      this.infect(p, true);
+      this.infect(p, true, null);
       if (++n >= 4) break;
     }
     if (n === 0) {
@@ -170,7 +230,7 @@ export class Outbreak {
 
   lockdown(x, z, r = 220) {
     if (this.phase !== 'running' || !this.spend('curber', 12)) return false;
-    this.lockdowns.push({ x, z, r, until: this.time + 3 * 3600 });
+    this.lockdowns.push({ x, z, r, until: this.time + 14 * DAY });
     return true;
   }
 
@@ -188,7 +248,7 @@ export class Outbreak {
 
   masks() {
     if (this.phase !== 'running' || this.time < this.masksUntil || !this.spend('curber', 18)) return false;
-    this.masksUntil = this.time + 4 * 3600;
+    this.masksUntil = this.time + 30 * DAY;
     return true;
   }
 
@@ -200,8 +260,9 @@ export class Outbreak {
 
   // ----- the epidemic -----
 
-  infect(p, free = false) {
+  infect(p, free = false, by = undefined) {
     p.inf = E;
+    p.gen = by === null ? 0 : by === undefined ? 1 : by.gen + 1;
     p.infT = this.base.incubation * (0.7 + 0.6 * this.rand());
     this.ever++;
     if (!free) {
@@ -256,10 +317,11 @@ export class Outbreak {
     }
     this.lockdowns = this.lockdowns.filter((z) => z.until > this.time);
     const { beta, reach, infectious } = this.base;
-    const masked = this.time < this.masksUntil ? 0.45 : 1;
+    const masked = this.time < this.masksUntil ? 0.55 : 1; // masks cut transmission by about 45%
     const range = reach * this.virus.reach;
     const rate = beta * this.virus.spread * masked * (this.active('antimask') ? 1.4 : 1) * (this.active('distancing') ? 0.55 : 1);
-    const detect = (0.0006 * this.testing + (this.active('hospitals') ? 0.003 : 0)) * this.virus.stealth;
+    // Each level of testing and tracing finds about 12% of infectious people per day; hospital testing adds more.
+    const detect = 1 - Math.exp((-(0.12 * this.testing + (this.active('hospitals') ? 0.25 : 0)) * this.virus.stealth) / DAY);
 
     // Hash everyone who is outside, so each infectious person only looks at their neighbours.
     const cells = new Map();
@@ -293,9 +355,92 @@ export class Outbreak {
       const c = this.counts();
       this.history.push([this.time, c.active, c.ever]);
     }
+    this.rate = rate;
+    if (this.trams && this.sim) this.transit(rate);
     this.heatCache = null;
     this.judge();
-    if (this.phase === 'running' && this.counts().active === 0) this.phase = 'over';
+  }
+
+  // A car sets off: has the driver been among infectious people? Trips from outside the map bring nothing.
+  board(car, from) {
+    car.load = 0;
+    if (this.phase !== 'running' || car.kind === 'bus' || this.sim.gateSet.has(from)) return;
+    const { x, z } = this.sim.nodes[from];
+    let near = 0;
+    let sick = 0;
+    for (const p of this.agents) {
+      if (Math.abs(p.x - x) > CAR_R || Math.hypot(p.x - x, p.z - z) > CAR_R) continue;
+      near++;
+      if (p.inf === I && !p.iso) sick++;
+    }
+    const share = Math.min(1, (sick / Math.max(near, 6)) * 4);
+    if (this.rand() < share) car.load = share;
+  }
+
+  // And arrives: a carrying driver mixes with the people around the end of the trip, and may infect one or two.
+  alight(car) {
+    if (!(car.load > 0) || this.phase !== 'running' || car.kind === 'bus' || this.sim.gateSet.has(car.dest)) return;
+    const { x, z } = this.sim.nodes[car.dest];
+    const chance = 1 - Math.exp(-this.rate * CAR_VISIT * car.load);
+    let caught = 0;
+    for (const p of this.agents) {
+      if (caught >= 2) break;
+      if (p.inf !== S || !p.out || Math.abs(p.x - x) > CAR_R || Math.hypot(p.x - x, p.z - z) > CAR_R) continue;
+      if (this.rand() < Math.min(1, chance * this.susceptibility(p) * this.crowding(p.x, p.z))) {
+        this.infect(p);
+        this.fromCars++;
+        caught++;
+      }
+    }
+  }
+
+  // Ends the round. There is no winner: it runs until the time is up, whatever has happened.
+  finish() {
+    this.phase = 'over';
+  }
+
+  // Trams and buses are crowded boxes. At each stop the people waiting nearby mix with the passengers, so
+  // an infectious person at one stop leaves the vehicle carrying the virus, and the next stop catches it.
+  // `load` is roughly the share of the passengers who are infectious.
+  transit(rate) {
+    const vehicles = [];
+    for (const t of this.trams.trams) if (t.dwell > 0) vehicles.push({ v: t, x: t.x, z: t.z });
+    for (const c of this.sim.cars) {
+      if (c.kind !== 'bus' || !(c.dwell > 0)) continue;
+      const e = this.sim.edges[c.edge];
+      if (e.tunnel) continue;
+      pointAt(e, c.s, STOP);
+      vehicles.push({ v: c, x: STOP.x, z: STOP.z });
+    }
+    for (const t of this.trams.trams) t.load = (t.load ?? 0) * DECAY;
+    for (const c of this.sim.cars) if (c.kind === 'bus') c.load = (c.load ?? 0) * DECAY;
+    if (!vehicles.length) return;
+    const wait = new Map(); // people outside, in 60 m squares
+    for (const p of this.agents) {
+      if (!p.out) continue;
+      const key = Math.floor(p.x / STOP_R) * 65537 + Math.floor(p.z / STOP_R);
+      const cell = wait.get(key);
+      if (cell) cell.push(p);
+      else wait.set(key, [p]);
+    }
+    for (const { v, x, z } of vehicles) {
+      const near = [];
+      const cx = Math.floor(x / STOP_R);
+      const cz = Math.floor(z / STOP_R);
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const p of wait.get((cx + a) * 65537 + cz + b) || []) if (Math.hypot(p.x - x, p.z - z) <= STOP_R) near.push(p);
+      if (!near.length) continue;
+      const sick = near.filter((p) => p.inf === I && !p.iso).length;
+      v.load = v.load ?? 0;
+      v.load += (Math.min(1, (sick / Math.max(near.length, 6)) * 4) - v.load) * 0.2;
+      const chance = 1 - Math.exp(-rate * TRANSIT_MIX * v.load);
+      if (chance < 1e-4) continue;
+      for (const p of near) {
+        if (p.inf === S && this.rand() < chance * this.susceptibility(p)) {
+          this.infect(p);
+          this.fromTransit++;
+        }
+      }
+    }
   }
 
   expose(p, cells, range, rate) {
@@ -308,7 +453,7 @@ export class Outbreak {
         if (!cell) continue;
         for (const q of cell) {
           if (q.inf !== S || Math.hypot(q.x - p.x, q.z - p.z) > range) continue;
-          if (this.rand() < chance * this.susceptibility(q)) this.infect(q);
+          if (this.rand() < Math.min(1, chance * this.susceptibility(q) * this.crowding(q.x, q.z))) this.infect(q, false, p);
         }
       }
     }

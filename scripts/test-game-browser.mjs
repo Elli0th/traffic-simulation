@@ -27,7 +27,7 @@ try {
   await command('Runtime.enable');
   await command('Page.enable');
   await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  await command('Page.navigate', { url: 'http://localhost:5173/?game' });
+  await command('Page.navigate', { url: 'http://localhost:5173/?game&players=2' });
   for (let attempt = 0; attempt < 120; attempt++) {
     if (await evaluate('!!window.table?.game && !document.getElementById("loading")')) break;
     if (attempt === 119) throw Error('Game did not load');
@@ -73,10 +73,23 @@ try {
   assert.equal(await evaluate('window.table.game.actionLog.at(-1).kind'), 'lockdown');
   assert.ok(await evaluate('document.querySelector("[data-map=curber] .action-pin").textContent.includes("Pending")'));
   assert.equal(await evaluate('document.querySelector("[data-map=spreader]").textContent.includes("Lockdown")'), false);
-  const count = await evaluate('Number(document.getElementById("g-infected").textContent) + Number(document.getElementById("g-noninfected").textContent)');
-  assert.equal(count, await evaluate('window.table.game.total'));
+  const count = await evaluate('Number(document.getElementById("g-infected").textContent.replaceAll(",", "")) + Number(document.getElementById("g-noninfected").textContent.replaceAll(",", ""))');
+  assert.equal(count, await evaluate('window.table.game.population'));
   assert.deepEqual(errors, []);
   const screenshot = await command('Page.captureScreenshot', { format: 'png' });
   writeFileSync(join(tmpdir(), 'traffic-game-interactions.png'), Buffer.from(screenshot.data, 'base64'));
   console.log('Independent zoom, target preview, party placement, private pins, rapid taps, cooldowns and shared totals passed.');
+  await command('Page.navigate', { url: 'http://localhost:5173/?game&players=1' });
+  for (let attempt = 0; attempt < 120; attempt++) {
+    if (await evaluate('!!window.table?.game && document.body.classList.contains("one-player") && !document.getElementById("loading")')) break;
+    if (attempt === 119) throw Error('Single-player game did not load');
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  const layout = await evaluate('({ map:document.querySelector("[data-map=spreader]").getBoundingClientRect().width, feed:document.getElementById("g-feed").getBoundingClientRect().width, curber:getComputedStyle(document.querySelector("[data-player=curber]")).display })');
+  assert.equal(layout.map, 1100);
+  assert.equal(layout.feed, 340);
+  assert.equal(layout.curber, 'none');
+  assert.equal(await evaluate('window.table.game.winner'), undefined);
+  assert.deepEqual(errors, []);
+  console.log('Updated single-player menu and layout passed with no winner field.');
 } finally { await command('Browser.close').catch(() => {}); ws.close(); }

@@ -5,10 +5,14 @@ import { People } from './people.js';
 import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
-import { Outbreak, ACTIONS } from './virus.js';
-import { SIDES, gameRect, sideAt, ownsAction, publicCounts, actionState, nearestPlace, ownedEvents } from './game-view.js';
+import { Outbreak, ACTIONS, DAY } from './virus.js';
+import { CurberAI } from './curber-ai.js';
+import { SIDES, gameRect, sideAt, ownsAction, privateOverlays, publicCounts, setSinglePlayer, activeSides, actionState, nearestPlace, ownedEvents } from './game-view.js';
 import { stepOutbreakWorld, GAME_STEP } from './game-runtime.js';
+import { startTablePlay } from './virus-table.js';
 import * as relay from './room/relay.js';
+import { VirusLighting } from './room/hue-lights.js';
+import { buildDashboardPayload } from './room/dashboard-data.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
 const MAX_STEP = 0.12; // longest simulation step, in seconds, that keeps the driving model stable
@@ -28,28 +32,41 @@ const sim = new Sim(map);
 const trams = new Trams(map.tramLines, sim);
 const ferries = new Ferries(map.ferries);
 // About one person out walking for every 14 stretches of footpath, and one cyclist per 95.
+// In the outbreak game people live around homes and workplaces, so dense districts have the crowds.
+const gameMode = params.has('game') && params.get('view') !== 'screen';
+// A screen during the game is a dashboard only: no map is drawn there, so nothing has to be simulated.
+const boardOnly = params.has('game') && !gameMode;
+const anchors = gameMode ? [...sim.homes, ...sim.works].map((i) => [sim.nodes[i].x, sim.nodes[i].z]) : null;
 const people = new People(map.paths, sim, {
   walkers: Math.round(map.paths.edges.length * 0.072),
   cyclists: Math.round(map.paths.edges.length * 0.0105),
+  anchors,
 });
 
 // Place indoor agents on their assigned paths too, so both views can display every person.
 if (params.has('game')) for (const p of people.agents) pointAt(people.edges[p.edge], p.s, p);
 
 // ?game turns the table into a two-player outbreak: one player spreads a virus, the other curbs it.
-const game = params.has('game') && params.get('view') !== 'screen' ? new Outbreak(people) : null;
-if (game) document.body.classList.add('game');
+const game = gameMode ? new Outbreak(people, { sim, trams }) : null;
+let ai = null; // the computer's Curber, in the one-player game
+const lighting = gameMode ? new VirusLighting() : null;
+const actionHistory = [];
+if (game) {
+  document.body.classList.add('game');
+  window.addEventListener('beforeunload', () => lighting?.restoreNeutral());
+}
 
 function stepAll(dt) {
-  if (game) { stepOutbreakWorld(sim, people, game, dt); return; }
+  if (game) { stepOutbreakWorld(sim, people, game, dt); ai?.step(); return; }
   sim.step(dt);
   trams.step(dt);
   ferries.step(dt);
   people.step(dt);
   game?.step(dt);
+  ai?.step();
 }
 // Start with the city already busy rather than filling up from empty.
-for (let t = 0; t < (game ? 60 : 420); t += game ? GAME_STEP : 0.15) stepAll(game ? GAME_STEP : 0.15);
+if (!boardOnly) for (let t = 0; t < (game ? 60 : 420); t += game ? GAME_STEP : 0.15) stepAll(game ? GAME_STEP : 0.15);
 
 // ---------- renderer, cameras, lights ----------
 
@@ -147,7 +164,7 @@ function zoomGame(side, factor) {
 function resize() {
   renderer.setSize(innerWidth, innerHeight);
   updateCameras();
-  if (game) for (const side of SIDES) updateGameCamera(side);
+  if (game) for (const side of activeSides()) updateGameCamera(side);
 }
 addEventListener('resize', resize);
 zoom = fitZoom();
@@ -410,7 +427,7 @@ relay.on('blobs', (message) => {
 // Hands over the table, from the lidar page: drag the map, or spread two hands to zoom.
 // `pan` is how far the hand moved and `at` where it is, as fractions of the picture.
 function gesture(g) {
-  if (follower || view !== 'table') return;
+  if (follower || view !== 'table' || tablePlay?.pieces) return; // the game's pieces need the map to stay put
   if (g.zoom !== 1) {
     const before = fromTable({ x: g.at[0], y: g.at[1] });
     zoom /= g.zoom;
@@ -613,7 +630,8 @@ el('plan-undo').addEventListener('click', () => {
   else setPlan(edits.slice(0, -1));
   planDirty = true;
 });
-if (follower) el('plan').remove();
+// The screens follow the table's plan; they have no tools of their own. (Hidden, not removed: the code below still writes to it.)
+if (follower) el('plan').style.display = 'none';
 
 // Objects from the depth camera use the planning tool too: each newly placed one applies it once.
 const usedObjects = new Set();
@@ -865,7 +883,7 @@ function drawVehicles(dt, time) {
     const { rx, rz } = car;
 
     for (const [along, y, l, h, w, role] of PARTS[car.kind]) {
-      const c = role === 0 ? car.paint : role === 1 ? GLASS : role === 2 ? WHITE : RED;
+      const c = role === 0 ? (game && car.load > 0.08 ? RED : car.paint) : role === 1 ? GLASS : role === 2 ? WHITE : RED;
       putBox(bodies, n++, rx + dx * along * S, y * S, rz + dz * along * S, dx, dz, l * S, h * S, w * S, c);
     }
     const half = (car.len / 2) * S;
@@ -898,7 +916,7 @@ function drawVehicles(dt, time) {
       if (s < 0) break;
       if (inTunnel(t.line, s)) continue;
       pointAt(t.line.path, s, P);
-      putBox(bodies, n++, P.x, 1.05 * wideT, P.z, P.dx, P.dz, 9.8, 1.5 * wideT, 2.4 * wideT, TRAM_BLUE);
+      putBox(bodies, n++, P.x, 1.05 * wideT, P.z, P.dx, P.dz, 9.8, 1.5 * wideT, 2.4 * wideT, game && t.load > 0.08 ? RED : TRAM_BLUE);
       putBox(bodies, n++, P.x, 2.15 * wideT, P.z, P.dx, P.dz, 9.2, 0.75 * wideT, 2.44 * wideT, GLASS);
       putBox(bodies, n++, P.x, 2.95 * wideT, P.z, P.dx, P.dz, 9.6, 0.85 * wideT, 2.3 * wideT, WHITE);
     }
@@ -1063,6 +1081,7 @@ function toast(side, text) {
 }
 function doAction(side, name, p) {
   if (!game || game.phase === 'over') return;
+  if (ai && side === 'curber') return; // the computer plays that side
   if (name === 'seed' ? side !== 'spreader' : !ownsAction(side, name, ACTIONS)) return;
   const v = gameViews[side];
   if (['seed', 'party', 'sickwork', 'lockdown'].includes(name) && !p) {
@@ -1080,6 +1099,19 @@ function doAction(side, name, p) {
     if (event) event.place = p ? nearestPlace(map.labels, p.x, p.z) : 'Citywide';
     const delay = ACTIONS[name]?.delay || 0;
     toast(side, `${ACTIONS[name]?.label || 'Patient zero'} placed${p ? ` - ${nearestPlace(map.labels, p.x, p.z)}` : ''}. ${delay ? `Starts in ${Math.ceil(delay / 60)} simulated minutes.` : 'Active now.'}`);
+    const actRecord = {
+      side,
+      name,
+      label: name === 'seed' ? 'Place Patient Zero' : ACTIONS[name]?.label || name,
+      x: p?.x,
+      z: p?.z,
+      gameTime: game.time,
+      realTime: Date.now(),
+      duration: ACTIONS[name]?.duration || 0,
+    };
+    actionHistory.push(actRecord);
+    relay.send('action', actRecord);
+    lighting?.update(game, true);
   }
   updateGame();
 }
@@ -1238,6 +1270,45 @@ if (game) {
   renderer.domElement.addEventListener('pointerleave', () => { for (const side of SIDES) gameViews[side].hover = null; });
 }
 
+// ---------- start menu: one player against the computer, or two players ----------
+
+const FEED = {
+  distancing: 'introduced social distancing: contacts drop by almost half',
+  lockdown: 'locked down an area (the red circle on the map)',
+  vaccines: 'began a free vaccine rollout',
+  hospitals: 'started building new hospitals, ready in about a week',
+  newvaccine: 'began researching a stronger vaccine, ready in about two weeks',
+};
+const feed = [];
+function tell(time, text) {
+  feed.unshift({ day: Math.min(60, Math.floor(time / DAY) + 1), text });
+  feed.length = Math.min(feed.length, 12);
+  el('g-feed-list').innerHTML = feed.map((f, k) => `<li class="${k === 0 ? 'fresh' : ''}"><i>Day ${f.day}</i>${f.text}</li>`).join('');
+}
+
+function startGame(players) {
+  if (players === 1) {
+    document.body.classList.add('one-player');
+    setSinglePlayer(true);
+    ai = new CurberAI(game, {
+      onNotice: (time) => tell(time, 'Health officials have noticed the outbreak and are preparing a response.'),
+      onAct: (kind, at, time) => tell(time, `The computer ${FEED[kind]}.`),
+    });
+    resize();
+    updateGameCamera('spreader', true);
+  }
+  el('g-menu').classList.remove('show');
+}
+if (game) {
+  const chosen = params.get('players');
+  if (chosen === '1' || chosen === '2') startGame(Number(chosen));
+  else {
+    el('g-menu').classList.add('show');
+    for (const b of document.querySelectorAll('#g-menu [data-players]')) b.addEventListener('click', () => startGame(Number(b.dataset.players)));
+  }
+}
+
+const num = (n) => n.toLocaleString('en-GB');
 const pct = (x) => `${Math.round(x * 1000) / 10}%`;
 const ROUND = 180; // real seconds a round runs once the virus is seeded
 let roundTime = 0;
@@ -1248,14 +1319,15 @@ function updateGame() {
   [c.s + c.r, c.e + c.i].forEach((n, k) => (bars[k].style.width = `${(n / total) * 100}%`));
   const left = Math.max(0, ROUND - roundTime);
   el('g-time').textContent = game.phase === 'setup' ? '3:00' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
-  if (game.phase === 'running' && left <= 0) game.phase = 'over';
+  if (game.phase === 'running' && left <= 0) game.finish();
+  const R_ = game.history.length > 3 ? growth() : null;
   const shared = publicCounts(c);
-  el('g-infected').textContent = shared.infected;
-  el('g-noninfected').textContent = shared.noninfected;
+  el('g-infected').textContent = num(Math.round(shared.infected * game.scale));
+  el('g-noninfected').textContent = num(Math.round(shared.noninfected * game.scale));
   el('g-status').textContent =
     game.phase === 'setup'
       ? 'Spreader: click a busy street to place patient zero. Curber: get ready.'
-      : `${Math.floor(game.time / 60)} simulated minutes | Red: infected | Green: non-infected (including recovered)`;
+      : `Day ${Math.min(60, Math.floor(game.time / DAY) + 1)} of 60. ${num(c.people.ever)} of ${num(game.population)} people have caught it (${pct(c.share)}); ${num(c.people.active)} infected now, ${num(c.people.hospital)} needing a hospital bed, an estimated ${num(c.people.dead)} deaths.${c.iso ? ` ${num(Math.round(c.iso * game.scale))} isolating.` : ''}${R_ ? ` ${R_}` : ''}`;
   el('g-sp').textContent = Math.floor(game.points.spreader);
   el('g-cp').textContent = Math.floor(game.points.curber);
   for (const b of document.querySelectorAll('#game [data-act]')) {
@@ -1280,26 +1352,34 @@ function updateGame() {
     repeat.disabled = !kind || !game.available(kind);
     repeat.querySelector('small').textContent = selected ? `${SHORT_ACTION[kind] || kind} - ${nearestPlace(map.labels, selected.x, selected.z)}` : 'Choose a map location first';
   }
+  // Update dynamic Hue lighting based on virus spread
+  lighting?.update(game);
+
+  // Broadcast tactical payload to TV dashboards
+  const dashPayload = buildDashboardPayload(game, actionHistory, roundTime);
+  if (dashPayload) relay.send('game_sync', dashPayload);
+
   if (game.phase === 'over' && !el('g-over').classList.contains('show')) {
     el('g-win').textContent = "Time's up";
-    el('g-sum').textContent = `After ${Math.round(game.time / 60)} simulated minutes: ${shared.infected} infected, ${shared.noninfected} non-infected. ${pct(c.share)} caught it during the round.`;
+    const peak = game.history.reduce((a, h) => (h[1] > a[1] ? h : a), [0, 0]);
+    el('g-sum').textContent = `In ${Math.round(game.time / DAY)} days ${num(c.people.ever)} of ${num(game.population)} people (${pct(c.share)}) caught the virus. Cases peaked at ${num(Math.round(peak[1] * game.scale))} on day ${Math.round(peak[0] / DAY)}. An estimated ${num(c.people.dead)} died, and ${num(c.people.immune)} are immune.`;
     el('g-over').classList.add('show');
     paused = true;
   }
 }
 
-// Plain-words reading of how fast it is growing, from the last ten simulated minutes.
+// Plain-words reading of how fast it is growing, from the last week of game days (history is one entry a minute).
 function growth() {
   const h = game.history;
-  const a = h[h.length - 1][1];
-  const b = h[Math.max(0, h.length - 11)][1];
-  if (a === 0) return 'Contained.';
-  if (b === 0) return '';
-  const ratio = a / b;
-  if (ratio > 1.15) return `Growing fast: cases up ${Math.round((ratio - 1) * 100)}% in 10 min.`;
-  if (ratio > 1.02) return 'Still growing.';
-  if (ratio > 0.9) return 'Levelling off.';
-  return 'Shrinking.';
+  const last = h[h.length - 1];
+  const prev = h[Math.max(0, h.length - 11)];
+  if (last[1] === 0) return 'Contained.';
+  if (prev[1] === 0 || last[0] === prev[0]) return '';
+  const days = (last[0] - prev[0]) / DAY;
+  const rate = Math.log(last[1] / prev[1]) / days; // per day
+  if (rate > 0.03) return `Doubling every ${(Math.LN2 / rate).toFixed(1)} days.`;
+  if (rate > -0.03) return 'Levelling off.';
+  return `Halving every ${(Math.LN2 / -rate).toFixed(1)} days.`;
 }
 
 function drawChart() {
@@ -1372,6 +1452,52 @@ function cachedMap(side, r) {
   return v.mapCache.texture;
 }
 
+// The same game played with pieces and hands on the table (?game=table), and shown on the screens.
+const tablePlay = params.has('game')
+  ? startTablePlay({
+      game,
+      follower,
+      onTable: params.get('game') === 'table' && !follower,
+      relay,
+      size: [WX, WZ],
+      act: doAction,
+      armed: (side) => gameViews[side].armed,
+      pick,
+    })
+  : null;
+
+// ---------- the two modes: the traffic demo, or the outbreak game on top of it ----------
+
+// Each is the same page at a different address, so changing mode starts it afresh. The game opens
+// with everything on: pieces and hands on the table, and the mouse and keyboard as well.
+function modeUrl(name) {
+  const next = new URLSearchParams(location.search);
+  if (name === 'game') next.set('game', follower ? '' : 'table');
+  else next.delete('game');
+  const query = next.toString().replace(/=(&|$)/g, '$1');
+  return location.pathname + (query ? `?${query}` : '');
+}
+const mode = params.has('game') ? 'game' : 'traffic';
+for (const a of document.querySelectorAll('#modes a')) {
+  a.href = modeUrl(a.dataset.mode);
+  a.classList.toggle('on', a.dataset.mode === mode);
+}
+addEventListener('keydown', (e) => {
+  if (e.key === 'm' && !(e.target instanceof HTMLInputElement) && !follower) location.href = modeUrl(mode === 'game' ? 'traffic' : 'game');
+});
+if (follower) {
+  // A screen has no switch of its own: it goes where the table goes.
+  el('modes').remove();
+  let gameSeen = performance.now();
+  relay.on('virus', () => {
+    gameSeen = performance.now();
+    if (mode !== 'game') location.href = modeUrl('game');
+  });
+  relay.on('state', () => {
+    if (mode === 'game' && performance.now() - gameSeen > 6000) location.href = modeUrl('traffic');
+  });
+}
+
 // ---------- frame loop ----------
 
 function advance(simSeconds) {
@@ -1379,7 +1505,8 @@ function advance(simSeconds) {
   const planning = tool !== 'object' && tool !== 'road' && !follower;
   if (planning) objectsUseTool(external);
   const zones = game ? game.lockdowns.filter(z => (z.start || 0) <= game.time && z.until > game.time) : [];
-  const blobs = mouse.blobs.concat(zones, follower ? remote : planning ? [] : external.map(fromTable));
+  // Played on the table, objects are the game's pieces: they act through the game, not by closing the street under them.
+  const blobs = mouse.blobs.concat(zones, follower ? remote : planning || tablePlay?.pieces ? [] : external.map(fromTable));
   sim.setBlobs(blobs);
   const n = Math.ceil(simSeconds / (game ? GAME_STEP : MAX_STEP));
   for (let k = 0; k < n; k++) stepAll(simSeconds / n);
@@ -1406,7 +1533,7 @@ function draw(dt, blobs) {
     renderer.setScissorTest(true);
     heatCells.visible = false;
     routeDots.visible = false;
-    for (const side of SIDES) {
+    for (const side of activeSides()) {
       const r = gameRect(side, innerWidth, innerHeight);
       const y = innerHeight - r.y - r.height;
       closedStrips.visible = false;
@@ -1421,6 +1548,9 @@ function draw(dt, blobs) {
       renderer.render(mapCacheScene, mapCacheCamera);
       cityGround.visible = false; cityBuildings.visible = false;
       for (const label of labels) label.visible = false;
+      // One screen shows everything: the Spreader's parties and the computer's lockdowns and closed streets.
+      closedStrips.visible = side === 'curber' || ai !== null;
+      drawOverlays(ai ? privateOverlays(game, 'spreader').concat(privateOverlays(game, 'curber')) : privateOverlays(game, side), sim.time);
       drawPeople(gameViews[side].zoom / r.width);
       renderer.render(scene, gameViews[side].cam);
     }
@@ -1441,14 +1571,19 @@ function frame(now) {
     orbit += dt * 0.04;
     updateCameras();
   }
-  if (game?.phase === 'running' && !paused) roundTime += dt;
+  if (game?.phase === 'running' && !paused) {
+    roundTime = Math.min(ROUND, roundTime + dt);
+    if (roundTime === ROUND) { game.finish(); updateGame(); }
+  }
+  tablePlay?.update(dt, external);
   const blobs = advance(paused ? 0 : dt * SPEEDS[speed]);
   draw(dt, blobs);
-  if (!game) { tellScreens(blobs, now); pushFrame(now); }
+  tellScreens(blobs, now); pushFrame(now);
   requestAnimationFrame(frame);
 }
 el('loading').remove();
-requestAnimationFrame(frame);
+if (boardOnly) renderer.domElement.style.display = 'none';
+else requestAnimationFrame(frame);
 
 window.table = {
   game,

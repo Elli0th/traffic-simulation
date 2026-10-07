@@ -8,7 +8,10 @@ import { demandAt } from './sim.js';
 const ROAD_HALF = 5; // metres either side of a crossing's centre that count as being on the road
 
 export class People {
-  constructor(paths, sim, { walkers = 1800, cyclists = 260, seed = 3 } = {}) {
+  // With `anchors` ([x, z] points, one per home or workplace, so busy districts have more of them), each
+  // person lives around one of them: they start near it and, once they stray too far, drift back. The city
+  // then has the crowds of its dense districts instead of an even spread of walkers over every footpath.
+  constructor(paths, sim, { walkers = 1800, cyclists = 260, seed = 3, anchors = null, leash = 450 } = {}) {
     this.sim = sim;
     this.rand = mulberry32(seed);
     this.at = []; // for each node, the path edges that meet there
@@ -26,6 +29,20 @@ export class People {
       if (foot) this.footEdges.push(idx);
       if (bike) this.bikeEdges.push(idx);
     }
+    this.leash = leash;
+    this.anchors = anchors;
+    this.grid = new Map(); // footpath and cycleway edges by 120 m square, to find the ones near an anchor
+    if (anchors) {
+      const mid = {};
+      this.edges.forEach((e, i) => {
+        if (!e.foot && !e.bike) return;
+        pointAt(e, e.len / 2, mid);
+        const key = this.cell(mid.x, mid.z);
+        const list = this.grid.get(key);
+        if (list) list.push(i);
+        else this.grid.set(key, [i]);
+      });
+    }
     this.agents = [];
     for (let k = 0; k < walkers + cyclists; k++) {
       const bike = k >= walkers && this.bikeEdges.length > 0;
@@ -38,14 +55,40 @@ export class People {
         wait: 0,
         x: 0, z: 0, dx: 1, dz: 0,
       };
+      if (anchors) {
+        const a = anchors[Math.floor(this.rand() * anchors.length)];
+        agent.ax = a[0];
+        agent.az = a[1];
+      }
       this.place(agent);
       this.agents.push(agent);
     }
   }
 
+  cell(x, z) {
+    return Math.floor(x / 120) * 100003 + Math.floor(z / 120);
+  }
+
+  // A random edge of the right kind near the agent's anchor, widening the search until one is found.
+  near(agent) {
+    for (let r = 1; r < 8; r++) {
+      const found = [];
+      const cx = Math.floor(agent.ax / 120);
+      const cz = Math.floor(agent.az / 120);
+      for (let a = -r; a <= r; a++) {
+        for (let b = -r; b <= r; b++) {
+          for (const i of this.grid.get((cx + a) * 100003 + cz + b) || []) if (agent.bike ? this.edges[i].bike : this.edges[i].foot) found.push(i);
+        }
+      }
+      if (found.length) return found[Math.floor(this.rand() * found.length)];
+    }
+    return -1;
+  }
+
   place(agent) {
     const list = agent.bike ? this.bikeEdges : this.footEdges;
-    agent.edge = list[Math.floor(this.rand() * list.length)];
+    const home = this.anchors ? this.near(agent) : -1;
+    agent.edge = home >= 0 ? home : list[Math.floor(this.rand() * list.length)];
     agent.dir = this.rand() < 0.5 ? 1 : -1;
     agent.s = this.rand() * this.edges[agent.edge].len;
   }
@@ -96,6 +139,21 @@ export class People {
         const options = this.at[node].filter((k) => k !== p.edge && (p.bike ? edges[k].bike : edges[k].foot));
         if (options.length) {
           p.edge = options[Math.floor(this.rand() * options.length)];
+          if (p.ax !== undefined && Math.hypot(p.x - p.ax, p.z - p.az) > this.leash) {
+            // Too far from home: take the way back most of the time.
+            let best = p.edge;
+            let bestD = Infinity;
+            for (const k of options) {
+              const o = edges[k];
+              const far = o.a === node ? o.pts.length - 2 : 0;
+              const d = Math.hypot(o.pts[far] - p.ax, o.pts[far + 1] - p.az);
+              if (d < bestD) {
+                bestD = d;
+                best = k;
+              }
+            }
+            if (this.rand() < 0.75) p.edge = best;
+          }
           e = edges[p.edge];
           p.dir = e.a === node ? 1 : -1;
           p.s = p.dir > 0 ? 0 : e.len;
