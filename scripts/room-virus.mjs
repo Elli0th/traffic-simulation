@@ -6,6 +6,7 @@
 //
 // Usage:
 //   node scripts/room-virus.mjs show
+//   PORT=5174 node scripts/room-virus.mjs show --solo  # TV 1: 3D broadcast; TV 2: auto-role dashboard
 //   node scripts/room-virus.mjs idle
 //   node scripts/room-virus.mjs status
 
@@ -54,15 +55,16 @@ async function postJson(url, body) {
 }
 
 async function showAll() {
-  const streamMode = !process.argv.includes('--no-stream');
+  const streamMode = !process.argv.includes("--no-stream");
   const tableUrl = `http://${LOCAL_IP}:${PORT}/?game=table`;
-  const tv1Url = `http://${LOCAL_IP}:${PORT}/dashboard.html?side=spreader`;
-  const tv2Url = `http://${LOCAL_IP}:${PORT}/dashboard.html?side=curber`;
+  const solo = process.argv.includes('--solo');
+  const tv1Url = solo ? `http://${LOCAL_IP}:${PORT}/tv-map.html?tv=1` : `http://${LOCAL_IP}:${PORT}/dashboard.html?side=spreader`;
+  const tv2Url = `http://${LOCAL_IP}:${PORT}/dashboard.html?side=${solo?'auto':'curber'}&tv=2`;
 
   console.log(`Setting up Outbreak Room Installation:`);
-  console.log(`  Projector -> ${streamMode ? 'WebSocket Stream from Laptop (ws://192.168.42.21/frames)' : tableUrl}`);
-  console.log(`  TV 1 (Spreader) -> ${tv1Url}`);
-  console.log(`  TV 2 (Curber)   -> ${tv2Url}`);
+  console.log(`  Projector -> ${streamMode ? "WebSocket stream from laptop" : tableUrl}`);
+  console.log(`  TV 1 (${solo?'Live 3D broadcast':'Spreader'}) -> ${tv1Url}`);
+  console.log(`  TV 2 (${solo?'Solo dashboard':'Curber'}) -> ${tv2Url}`);
 
   const displayTasks = [
     postJson(`${HOSTS.tv1}/show`, { url: tv1Url }),

@@ -414,7 +414,7 @@
         </div>
         <div class="timer-badge">
           <small style="display: block; font-size: 10px; text-transform: uppercase; color: #8a99ad">Timeline</small>
-          <b id="m-day">DAY 1</b> &bull; <span id="m-timer" style="font-weight: 700; font-size: 20px; color: #fff">3:00</span>
+          <b id="m-day">DAY 1</b> &bull; <span id="m-timer" style="font-weight: 700; font-size: 20px; color: #fff">--:--</span>
         </div>
       </div>
     </header>
@@ -500,14 +500,19 @@
 
     <script type="module">
       import * as relay from './src/room/relay.js';
+      import {formatDisplayTime,soloTvRoute} from './src/room/tv-display.js';
 
       const params = new URLSearchParams(location.search);
       // 'spreader' or 'curber' (TV 1 = spreader, TV 2 = curber)
-      const side = params.get('side') || (params.get('tv') === '2' ? 'curber' : 'spreader');
+      const autoSide=params.get('side')==='auto';
+      let side = (autoSide ? 'curber' : params.get('side')) || (params.get('tv') === '2' ? 'curber' : 'spreader');
+      let isSpreader;
+      function configureSide(next) {
+        side=next;
       document.body.className = `side-${side}`;
 
       // Set side-specific labels
-      const isSpreader = side === 'spreader';
+      isSpreader = side === 'spreader';
       document.getElementById('f-icon').textContent = isSpreader ? '☣️' : '🛡️';
       document.getElementById('f-title').textContent = isSpreader ? 'Spreader Strategic Command' : 'Curber Public Health Defense';
       document.getElementById('f-subtitle').textContent = isSpreader
@@ -519,14 +524,26 @@
         ? 'Actionable Intel · Unprotected Targets'
         : 'Actionable Intel · Outbreak Hotspots';
 
-      let lastState = null;
+      }
+      configureSide(side);
+
+      let lastState = null, latestSource=-1, latestSequence=-1, receivedAt=0;
+      document.getElementById('f-subtitle').textContent='Waiting for game broadcast · use the same host and port as the game';
 
       function render(state) {
         if (!state) return;
-        lastState = state;
+        if(state.startedAt!=null) {
+          if(state.startedAt<latestSource || (state.startedAt===latestSource && state.sequence<=latestSequence)) return;
+          latestSource=state.startedAt; latestSequence=state.sequence;
+        } else if(latestSource>=0) return;
+        const next=soloTvRoute(state,{page:'dashboard',side:params.get('side'),tv:params.get('tv')});
+        if(next) {location.replace(new URL(next,location.href));return;}
+        lastState = state; receivedAt=performance.now();
+        if((autoSide||state.mode==='solo') && side!==(state.role||'curber')) configureSide(state.role||'curber');
+        document.getElementById('f-subtitle').textContent=state.mode==='solo'?`Solo ${isSpreader?'Spreader':'Government'} · 2-minute round${state.paused?' · PAUSED':''}${state.phase==='over'?' · FINISHED':''}` : (isSpreader ? 'Gothenburg Outbreak Offensive · Television 1 (Left)' : 'Epidemic Containment Operations · Television 2 (Right)');
 
         const left = Math.max(0, state.timeLeft || 0);
-        document.getElementById('m-timer').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+        document.getElementById('m-timer').textContent = formatDisplayTime(state.timeLeft);
         document.getElementById('m-day').textContent = `DAY ${state.day || 1}`;
         document.getElementById('f-points').textContent = `${isSpreader ? state.points?.spreader || 0 : state.points?.curber || 0} PTS`;
 
@@ -612,6 +629,10 @@
           });
         }
 
+        if(state.mode==='solo') {
+          document.querySelector('#stat-block-1 small').textContent=isSpreader?'Population ever infected':'Population never infected';
+          document.getElementById('m-share').textContent=`${Math.round(state.score*1000)/10}%`;
+        }
         // Action Deck
         const deck = isSpreader ? state.spreaderData?.deck : state.curberData?.deck;
         const deckEl = document.getElementById('deck-grid');
@@ -619,13 +640,13 @@
         if (deck) {
           deck.forEach((card) => {
             const d = document.createElement('div');
-            d.className = `deck-card ${card.ready && card.affordable ? 'ready' : ''}`;
+            d.className = `deck-card ${card.available ? 'ready' : ''}`;
             d.innerHTML = `
               <div>
                 <div class="title">${card.label}</div>
                 <div class="cost">${card.cost} pts</div>
               </div>
-              <div class="cd">${card.cooldownSec > 0 ? `${Math.ceil(card.cooldownSec)}s` : (card.affordable ? 'READY' : 'LOCKED')}</div>
+              <div class="cd">${card.built ? 'BUILT' : card.unlocked===false ? 'LOCKED' : card.cooldownSec > 0 ? `${Math.ceil(card.cooldownSec)}s` : (card.available ? 'READY' : 'WAITING')}</div>
             `;
             deckEl.appendChild(d);
           });
@@ -679,14 +700,13 @@
         }
       }
 
+      setInterval(()=>{
+        if(!receivedAt || performance.now()-receivedAt>3000) document.getElementById('f-subtitle').textContent='Waiting for game broadcast · open this TV page on the same host and port as the main game';
+      },1000);
+      relay.send('scene_request',{});
       // Relay WebSocket / BroadcastChannel listener
       relay.on('game_sync', (data) => render(data));
-      relay.on('action', (act) => {
-        if (!lastState) return;
-        if (act.side === 'spreader') lastState.lastActions.spreader = act;
-        else lastState.lastActions.curber = act;
-        render(lastState);
-      });
+
     </script>
   </body>
 </html>

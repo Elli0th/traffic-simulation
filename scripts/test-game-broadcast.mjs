@@ -1,0 +1,51 @@
+import assert from 'node:assert/strict';
+import {Outbreak} from '../src/virus.js';
+import {gameSceneState,SceneReceiver} from '../src/room/game-broadcast.js';
+import {buildDashboardPayload} from '../src/room/dashboard-data.js';
+import {formatDisplayTime,soloTvRoute,tvCameraDistance} from '../src/room/tv-display.js';
+assert.equal(formatDisplayTime(null),'--:--');assert.equal(formatDisplayTime(120),'2:00');assert.equal(formatDisplayTime(0),'0:00');
+assert.equal(soloTvRoute({mode:'solo'},{page:'dashboard',side:'spreader'}),'tv-map.html?tv=1');
+assert.equal(soloTvRoute({mode:'solo'},{page:'legacy',tv:'2'}),'dashboard.html?side=auto&tv=2');
+assert.equal(soloTvRoute({mode:'solo'},{page:'dashboard',side:'curber',tv:'2'}),null);
+assert.equal(soloTvRoute({mode:'multiplayer'},{page:'dashboard',side:'spreader'}),null);
+assert.ok(tvCameraDistance(2000,16/9)<2000,'Closer camera makes the city fill the TV');
+const agents=Array.from({length:100},(_,i)=>({x:100+i,z:100,out:true,threshold:0}));
+const game=new Outbreak({agents});game.configureSolo('curber');game.phase='running';game.time=600;
+assert.ok(game.addBarrier([{x:100,z:0},{x:100,z:200}]));
+const args={session:'round-one',startedAt:1000,sequence:1,roundTime:15,paused:true,map:'central',view:{x:100,z:100,zoom:2000}};
+assert.equal(gameSceneState(game,{...args,selectionPending:true}).timeLeft,null);
+assert.equal(buildDashboardPayload(game,[],0,{selectionPending:true}).timeLeft,null);
+const packet=gameSceneState(game,args), wire=JSON.parse(JSON.stringify(packet));
+assert.equal(packet.timeLeft,165);assert.equal(packet.roundDuration,180);assert.ok(packet.paused);
+assert.equal(packet.agents.length,300);assert.equal(packet.agents[0],agents[0].x);
+assert.equal(wire.trenches[0].until,null);assert.equal(wire.trenches[0].placed,600);
+assert.deepEqual(packet.camera,{x:100,z:100,zoom:2000});
+const receiver=new SceneReceiver();assert.ok(receiver.receive(wire));
+assert.equal(receiver.state.trenches[0].until,Infinity,'Permanent damage survives JSON/socket transport');
+assert.equal(receiver.receive(packet),false,'Duplicate socket and BroadcastChannel delivery is ignored');
+assert.equal(receiver.receive({...packet,sequence:0}),false,'Old frames cannot rewind the view');
+assert.ok(receiver.receive({...packet,sequence:2,gameTime:630}));
+assert.ok(receiver.receive({...packet,session:'round-two',startedAt:2000,sequence:1,trenches:[]}));
+assert.equal(receiver.receive({...packet,sequence:99}),false,'A late packet from the old round is ignored');
+const dashboard=buildDashboardPayload(game,[],15,{paused:true});
+assert.equal(dashboard.timeLeft,packet.timeLeft);assert.equal(dashboard.roundDuration,180);
+assert.equal(dashboard.role,'curber');assert.ok(dashboard.paused);
+const card=dashboard.curberData.deck.find(c=>c.key==='barrier');assert.ok(card);
+assert.equal(card.cost,game.action('barrier').cost);assert.equal(card.cooldownSec,10);
+game.time=700;const stable=buildDashboardPayload(game,[],15,{paused:true});assert.equal(stable.timeLeft,165);
+game.soloRole='spreader';const offensive=buildDashboardPayload(game,[],90);
+assert.equal(offensive.timeLeft,90);assert.ok(offensive.spreaderData.deck.some(c=>c.key==='mutation'));
+game.soloRole=null;assert.equal(buildDashboardPayload(game,[],90).timeLeft,90);
+// Prove the snapshot can reach an independent page through the same browser broadcast primitive.
+const channelName=`traffic-tv-test-${Date.now()}`;
+const sender=new BroadcastChannel(channelName),listener=new BroadcastChannel(channelName);
+try {
+  const got=await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(Error('Broadcast timed out')),2000);
+    listener.onmessage=e=>{clearTimeout(timer);resolve(e.data);};
+    sender.postMessage({type:'game_scene',data:packet});
+  });
+  assert.equal(got.type,'game_scene');assert.equal(got.data.timeLeft,165);
+  assert.deepEqual(got.data.agents,packet.agents);
+} finally {sender.close();listener.close();}
+console.log('TV snapshot broadcast, exact people, camera/trench sync, pause, duplicate/old-frame handling, solo role/decks and three-minute countdown passed.');
