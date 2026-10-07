@@ -1229,10 +1229,11 @@ function drawSeismicOverlay(ctx, now) {
   for (let i = 0; i < seismicSession.points.length; i++) {
     const pt = seismicSession.points[i];
     const scr = screenPoint(side, pt.x, pt.z);
+    const gx = scr.x + (r.x || 0), gy = scr.y + (r.y || 0);
     ctx.save();
     ctx.beginPath();
     const pulse = 8 + Math.sin((now - pt.at) * 0.008) * 3;
-    ctx.arc(scr.x, scr.y, pulse, 0, Math.PI * 2);
+    ctx.arc(gx, gy, pulse, 0, Math.PI * 2);
     ctx.fillStyle = '#ff7b2b';
     ctx.shadowColor = '#ff3300';
     ctx.shadowBlur = 12;
@@ -1240,7 +1241,7 @@ function drawSeismicOverlay(ctx, now) {
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(scr.x, scr.y, 4, 0, Math.PI * 2);
+    ctx.arc(gx, gy, 4, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.globalAlpha = 1.0;
     ctx.fill();
@@ -1397,7 +1398,7 @@ const SHORT_ACTION = { seed: 'Patient zero', clinic: 'Vaccine clinic', tracing: 
 function screenPoint(side, x, z) {
   const r = gameRect(side, innerWidth, innerHeight);
   markerPoint.set(x, 0, z).project(gameViews[side].cam);
-  return { x: (markerPoint.x + 1) * r.width / 2 + (r.x || 0), y: (1 - markerPoint.y) * r.height / 2 + (r.y || 0) };
+  return { x: (markerPoint.x + 1) * r.width / 2, y: (1 - markerPoint.y) * r.height / 2 };
 }
 function focusAction(side, event) {
   const p = event.worker || event;
@@ -1617,7 +1618,7 @@ function updateGame() {
   const total = game.total;
   if (soloRole) {
     el('g-score').textContent = `${soloRole === 'spreader' ? 'Infected' : 'Never infected'}: ${pct(soloRole === 'spreader' ? c.share : 1 - c.share)}`;
-    el('g-progress').textContent = soloRole === 'spreader' ? `Momentum: ${pct(c.share)} · powers at 8 / 20 / 30 / 40%${game.time >= 1800 ? ' · spread accelerated' : ''}` : (game.unlocked('barrier') ? 'Seismic trench ready · select the card, drag, then release to detonate' : `Barrier: ${pct(game.protectedShare())} / 25% protected · ${Math.max(0, Math.ceil((600-game.time)/30))}s to unlock`);
+    el('g-progress').textContent = soloRole === 'spreader' ? `Momentum: ${pct(c.share)} · powers at 8 / 20 / 30 / 40%${game.time >= 1800 ? ' · spread accelerated' : ''}` : (game.unlocked('barrier') ? 'Seismic trench ready · select card, tap or swipe line to detonate' : `Barrier: ${pct(game.protectedShare())} / 25% protected · ${Math.max(0, Math.ceil((600-game.time)/30))}s to unlock`);
   }
   const bars = el('g-split').children;
   [c.s + c.r, c.e + c.i].forEach((n, k) => (bars[k].style.width = `${(n / total) * 100}%`));
