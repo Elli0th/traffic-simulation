@@ -13,6 +13,28 @@ const relay = () => ({
   },
 });
 
+// What the pages on the room's displays report about themselves (they have no console we can read):
+// POST /client-log with a line of text; GET /client-log lists the last hundred, newest last.
+const pageLog = [];
+const clientLog = () => ({
+  name: 'client-log',
+  configureServer(server) {
+    server.middlewares.use('/client-log', (req, res) => {
+      if (req.method !== 'POST') {
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        return res.end(pageLog.join('\n') + '\n');
+      }
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => {
+        pageLog.push(`${new Date().toLocaleTimeString('sv-SE')} ${req.socket.remoteAddress?.replace('::ffff:', '')} ${body.slice(0, 600)}`);
+        if (pageLog.length > 100) pageLog.shift();
+        res.end('ok');
+      });
+    });
+  },
+});
+
 // If the room's API refuses requests from a web page (CORS), start the server with
 //   ROOM_API=http://address-of-the-room npm run dev
 // and use /room-api/... as the address on the camera page; the server fetches it on the page's behalf.
@@ -26,11 +48,25 @@ const hueHost = process.env.HUE_IP || (process.env.ROOM_ENV === 'sim' ? 'localho
 const lidar = { target: process.env.ROOM_LIDAR ?? 'http://192.168.42.24', changeOrigin: true, ws: true, rewrite: (path) => path.replace(/^\/room-lidar/, '') };
 
 // The keys for live traffic are read from .env.local; see .env.example and scripts/live.mjs.
+// PROJECTOR, TV1 and TV2 point somewhere else, as for scripts/room.mjs.
+const displays = {
+  projector: process.env.PROJECTOR ?? 'http://192.168.42.21',
+  'tv-1': process.env.TV1 ?? 'http://192.168.42.22',
+  'tv-2': process.env.TV2 ?? 'http://192.168.42.23',
+};
+
 export default defineConfig(({ mode }) => ({
-  plugins: [relay(), live({ ...loadEnv(mode, process.cwd(), ''), ...process.env })],
+  plugins: [relay(), clientLog(), live({ ...loadEnv(mode, process.cwd(), ''), ...process.env })],
   server: {
     proxy: {
       '/room-lidar': lidar,
+      // The displays, for a page that streams frames to one (stream.html): ws://…/room-display/projector/frames.
+      ...Object.fromEntries(
+        Object.entries(displays).map(([name, address]) => [
+          `/room-display/${name}`,
+          { target: address, changeOrigin: true, ws: true, rewrite: (path) => path.replace(`/room-display/${name}`, '') },
+        ]),
+      ),
       '/hue-api': {
         target: `http://${hueHost}`,
         changeOrigin: true,
@@ -40,6 +76,6 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    rollupOptions: { input: ['index.html', 'camera.html', 'lidar.html', 'grid.html', 'draw.html', 'dashboard.html'] },
+    rollupOptions: { input: ['index.html', 'camera.html', 'lidar.html', 'grid.html', 'draw.html', 'dashboard.html', 'stream.html'] },
   },
 }));

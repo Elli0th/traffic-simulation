@@ -536,7 +536,7 @@ function tellScreens(blobs, now) {
 // as a JPEG over its WebSocket. &fps=20 sets the rate. An http address gets each frame as a POST.
 const pushTo = params.get('push');
 const pushSocket = pushTo?.startsWith('ws');
-const pushGap = 1000 / (Number(params.get('fps')) || (pushSocket ? 20 : 8));
+const pushGap = 1000 / Math.min(30, Number(params.get('fps')) || (pushSocket ? 20 : 8)); // never more than 30 a second
 let pushAt = 0;
 let pushRetry = 0;
 let pushing = false;
@@ -1788,6 +1788,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 el('loading').remove();
+window.pageLog?.(`running${lidarTouch ? ', tap touch on' : ''}`);
 if (boardOnly) renderer.domElement.style.display = 'none';
 else requestAnimationFrame(frame);
 

@@ -1,6 +1,16 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      // Tells the dev server what goes wrong on this page (see /client-log): a display has no console to read.
+      (() => {
+        const tell = (text) => { try { fetch('/client-log', { method: 'POST', body: `${location.pathname}${location.search} ${text}` }).catch(() => {}); } catch {} };
+        window.pageLog = tell;
+        addEventListener('error', (e) => tell(`error: ${e.message} at ${(e.filename || '').split('/').pop()}:${e.lineno}`));
+        addEventListener('unhandledrejection', (e) => tell(`error: ${e.reason?.message || e.reason}`));
+        tell(`opened, ${innerWidth}x${innerHeight}`);
+      })();
+    </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tangible Table · Göteborg</title>
