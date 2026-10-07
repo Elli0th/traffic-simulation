@@ -14,6 +14,7 @@ import * as relay from './room/relay.js';
 import { VirusLighting } from './room/hue-lights.js';
 import { buildDashboardPayload } from './room/dashboard-data.js';
 import { LidarTouchController } from './room/lidar-touch.js';
+import { FrameStreamer } from './room/frame-streamer.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
 const MAX_STEP = 0.12; // longest simulation step, in seconds, that keeps the driving model stable
@@ -54,9 +55,18 @@ const lighting = gameMode ? new VirusLighting() : null;
 const actionHistory = [];
 let touchCtx = null;
 let lidarTouch = null;
+let streamer = null;
 if (game) {
   document.body.classList.add('game');
-  window.addEventListener('beforeunload', () => lighting?.restoreNeutral());
+  window.addEventListener('beforeunload', () => {
+    lighting?.restoreNeutral();
+    streamer?.stop();
+  });
+  streamer = new FrameStreamer({
+    url: params.get('stream_url') || 'ws://192.168.42.21/frames',
+    enabled: params.get('stream') !== 'false',
+  });
+  streamer.start();
 }
 
 function stepAll(dt) {
@@ -73,8 +83,8 @@ if (!boardOnly) for (let t = 0; t < (game ? 60 : 420); t += game ? GAME_STEP : 0
 
 // ---------- renderer, cameras, lights ----------
 
-const renderer = new THREE.WebGLRenderer({ antialias: !game, alpha: false, preserveDrawingBuffer: false });
-renderer.setPixelRatio(game ? 1 : Math.min(devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: !game, alpha: false, preserveDrawingBuffer: game ? true : false });
+renderer.setPixelRatio(game ? 0.8 : Math.min(devicePixelRatio, 2));
 renderer.localClippingEnabled = true; // lets the ground be cut off at the edge of the map
 document.body.appendChild(renderer.domElement);
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1576,7 +1586,10 @@ function draw(dt, blobs) {
 }
 
 let last = performance.now();
+const targetGap = game ? 1000 / 30 : 0; // 30 FPS cap during outbreak game mode to protect Raspberry Pi GPU
 function frame(now) {
+  requestAnimationFrame(frame);
+  if (targetGap > 0 && now - last < targetGap) return;
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (view === 'screen') {
@@ -1596,7 +1609,7 @@ function frame(now) {
   }
   tellScreens(blobs, now);
   pushFrame(now);
-  requestAnimationFrame(frame);
+  if (streamer) streamer.pushFrame(renderer.domElement, touchCtx?.canvas);
 }
 el('loading').remove();
 if (boardOnly) renderer.domElement.style.display = 'none';

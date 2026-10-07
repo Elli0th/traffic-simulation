@@ -54,31 +54,33 @@ async function postJson(url, body) {
 }
 
 async function showAll() {
+  const streamMode = !process.argv.includes('--no-stream');
   const tableUrl = `http://${LOCAL_IP}:${PORT}/?game=table`;
   const tv1Url = `http://${LOCAL_IP}:${PORT}/dashboard.html?side=spreader`;
   const tv2Url = `http://${LOCAL_IP}:${PORT}/dashboard.html?side=curber`;
 
   console.log(`Setting up Outbreak Room Installation:`);
-  console.log(`  Projector -> ${tableUrl}`);
+  console.log(`  Projector -> ${streamMode ? 'WebSocket Stream from Laptop (ws://192.168.42.21/frames)' : tableUrl}`);
   console.log(`  TV 1 (Spreader) -> ${tv1Url}`);
   console.log(`  TV 2 (Curber)   -> ${tv2Url}`);
 
-  const [pRes, t1Res, t2Res] = await Promise.all([
-    postJson(`${HOSTS.projector}/show`, { url: tableUrl }),
+  const displayTasks = [
     postJson(`${HOSTS.tv1}/show`, { url: tv1Url }),
     postJson(`${HOSTS.tv2}/show`, { url: tv2Url }),
-  ]);
+  ];
 
-  console.log(`\nDisplay responses:`);
-  console.log(`  Projector:`, pRes);
-  console.log(`  TV 1:     `, t1Res);
-  console.log(`  TV 2:     `, t2Res);
+  if (!streamMode) {
+    displayTasks.unshift(postJson(`${HOSTS.projector}/show`, { url: tableUrl }));
+  }
+
+  const results = await Promise.all(displayTasks);
+  console.log(`\nDisplays updated:`, streamMode ? { tv1: results[0], tv2: results[1] } : results);
 }
 
 async function idleAll() {
   console.log(`Resetting room displays to idle...`);
   const [pRes, t1Res, t2Res] = await Promise.all([
-    postJson(`${HOSTS.projector}/show`, { idle: true }),
+    postJson(`${HOSTS.projector}/show`, { blank: true }),
     postJson(`${HOSTS.tv1}/show`, { idle: true }),
     postJson(`${HOSTS.tv2}/show`, { idle: true }),
   ]);
