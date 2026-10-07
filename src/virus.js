@@ -32,6 +32,15 @@ export const POPULATION = 600000; // Göteborg municipality
 export const IFR = 0.007; // infection fatality rate of the original strain, all ages
 export const HOSPITAL = 0.05; // share of cases who need a hospital bed
 
+// The round has a winner. The Spreader wins as soon as this share of the city has caught it, or the
+// government's approval reaches zero. The Curber wins by holding out until time is up.
+export const TAKEOVER = 0.3;
+// What keeping people at home costs the Curber in approval: points of 100 per game day, for each
+// lockdown in force and for social distancing.
+const APPROVAL = { lockdown: 1.1, distancing: 0.9 };
+
+const CAR_R = 60; // metres around where a car trip starts or ends: who the driver has been among, and meets
+const CAR_VISIT = 90; // seconds of close contact a driver carrying the virus has where the trip ends
 const STOP_R = 40; // metres around a stop that count as boarding or waiting
 const TRANSIT_MIX = 4; // being inside a vehicle is this many times as risky as passing on the street
 const DECAY = 0.998; // per second: an infectious passenger gets off, and the vehicle clears
@@ -65,6 +74,15 @@ export class Outbreak {
     this.sim = sim;
     this.trams = trams;
     this.fromTransit = 0; // cases caught on or around a tram or bus
+    this.fromCars = 0; // cases brought by someone arriving by car
+    this.approval = 100; // the city's confidence in its government; at 0 it falls
+    this.winner = null; // 'spreader' or 'curber', once the round is over
+    this.reason = '';
+    this.rate = 0;
+    if (sim) {
+      sim.onLaunch = (car, from) => this.board(car, from);
+      sim.onArrive = (car) => this.alight(car);
+    }
     this.density = buildDensity(sim);
     this.population = population;
     this.scale = population / this.agents.length; // real people each simulated person stands for
@@ -331,10 +349,53 @@ export class Outbreak {
       const c = this.counts();
       this.history.push([this.time, c.active, c.ever]);
     }
+    this.rate = rate;
     if (this.trams && this.sim) this.transit(rate);
     this.heatCache = null;
     this.judge();
-    if (this.phase === 'running' && this.counts().active === 0) this.phase = 'over';
+    if (this.phase === 'running' && this.counts().active === 0) this.finish('curber', 'The outbreak was stamped out.');
+  }
+
+  // A car sets off: has the driver been among infectious people? Trips from outside the map bring nothing.
+  board(car, from) {
+    car.load = 0;
+    if (this.phase !== 'running' || car.kind === 'bus' || this.sim.gateSet.has(from)) return;
+    const { x, z } = this.sim.nodes[from];
+    let near = 0;
+    let sick = 0;
+    for (const p of this.agents) {
+      if (Math.abs(p.x - x) > CAR_R || Math.hypot(p.x - x, p.z - z) > CAR_R) continue;
+      near++;
+      if (p.inf === I && !p.iso) sick++;
+    }
+    const share = Math.min(1, (sick / Math.max(near, 6)) * 4);
+    if (this.rand() < share) car.load = share;
+  }
+
+  // And arrives: a carrying driver mixes with the people around the end of the trip, and may infect one or two.
+  alight(car) {
+    if (!(car.load > 0) || this.phase !== 'running' || car.kind === 'bus' || this.sim.gateSet.has(car.dest)) return;
+    const { x, z } = this.sim.nodes[car.dest];
+    const chance = 1 - Math.exp(-this.rate * CAR_VISIT * car.load);
+    let caught = 0;
+    for (const p of this.agents) {
+      if (caught >= 2) break;
+      if (p.inf !== S || !p.out || Math.abs(p.x - x) > CAR_R || Math.hypot(p.x - x, p.z - z) > CAR_R) continue;
+      if (this.rand() < Math.min(1, chance * this.susceptibility(p) * this.crowding(p.x, p.z))) {
+        this.infect(p);
+        this.fromCars++;
+        caught++;
+      }
+    }
+  }
+
+  // Ends the round and names the winner. Called with no arguments when time is up.
+  finish(winner, reason) {
+    if (this.winner) return;
+    const share = this.ever / this.total;
+    this.winner = winner ?? 'curber';
+    this.reason = reason ?? `The city held out: only ${Math.round(share * 100)}% caught the virus.`;
+    this.phase = 'over';
   }
 
   // Trams and buses are crowded boxes. At each stop the people waiting nearby mix with the passengers, so
@@ -401,6 +462,12 @@ export class Outbreak {
     // Both sides earn a little all the time, so nobody is ever stuck with nothing to do.
     this.points.curber += TICK / 40;
     this.points.spreader += TICK / 90;
+
+    const zones = this.lockdowns.filter((z) => (z.start || 0) <= this.time).length;
+    const drain = zones * APPROVAL.lockdown + (this.active('distancing') ? APPROVAL.distancing : 0);
+    this.approval = Math.max(0, this.approval - (drain * TICK) / DAY);
+    if (this.approval <= 0) this.finish('spreader', 'The government lost the confidence of the city.');
+    else if (this.ever / this.total >= TAKEOVER) this.finish('spreader', `${Math.round(TAKEOVER * 100)}% of the city has caught the virus.`);
   }
 
   // Where the virus is: map of coarse cells to the number of exposed and infectious people in them.

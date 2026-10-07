@@ -5,7 +5,7 @@ import { People } from './people.js';
 import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
-import { Outbreak, ACTIONS, DAY } from './virus.js';
+import { Outbreak, ACTIONS, TAKEOVER, DAY } from './virus.js';
 import { SIDES, gameRect, sideAt, ownsAction, privateOverlays, publicCounts } from './game-view.js';
 import { startTablePlay } from './virus-table.js';
 import * as relay from './room/relay.js';
@@ -30,6 +30,8 @@ const ferries = new Ferries(map.ferries);
 // About one person out walking for every 14 stretches of footpath, and one cyclist per 95.
 // In the outbreak game people live around homes and workplaces, so dense districts have the crowds.
 const gameMode = params.has('game') && params.get('view') !== 'screen';
+// A screen during the game is a dashboard only: no map is drawn there, so nothing has to be simulated.
+const boardOnly = params.has('game') && !gameMode;
 const anchors = gameMode ? [...sim.homes, ...sim.works].map((i) => [sim.nodes[i].x, sim.nodes[i].z]) : null;
 const people = new People(map.paths, sim, {
   walkers: Math.round(map.paths.edges.length * 0.072),
@@ -52,7 +54,7 @@ function stepAll(dt) {
   game?.step(dt);
 }
 // Start with the city already busy rather than filling up from empty.
-for (let t = 0; t < 420; t += 0.15) stepAll(0.15);
+if (!boardOnly) for (let t = 0; t < 420; t += 0.15) stepAll(0.15);
 
 // ---------- renderer, cameras, lights ----------
 
@@ -1118,11 +1120,13 @@ function updateGame() {
   [c.s + c.r, c.e + c.i].forEach((n, k) => (bars[k].style.width = `${(n / total) * 100}%`));
   const left = Math.max(0, ROUND - roundTime);
   el('g-time').textContent = game.phase === 'setup' ? '3:00' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
-  if (game.phase === 'running' && left <= 0) game.phase = 'over';
+  if (game.phase === 'running' && left <= 0) game.finish();
   const R_ = game.history.length > 3 ? growth() : null;
   const shared = publicCounts(c);
   el('g-infected').textContent = num(Math.round(shared.infected * game.scale));
   el('g-noninfected').textContent = num(Math.round(shared.noninfected * game.scale));
+  el('g-caught').textContent = `${Math.floor(c.share * 100)}% of ${Math.round(TAKEOVER * 100)}%`;
+  el('g-approval').textContent = `${Math.ceil(game.approval)}%`;
   el('g-status').textContent =
     game.phase === 'setup'
       ? 'Spreader: click a busy street to place patient zero. Curber: get ready.'
@@ -1143,7 +1147,8 @@ function updateGame() {
   drawChart();
   drawHeat();
   if (game.phase === 'over' && !el('g-over').classList.contains('show')) {
-    el('g-win').textContent = "Time's up";
+    if (!game.winner) game.finish();
+    el('g-win').textContent = `${game.winner === 'spreader' ? 'The Spreader wins' : 'The Curber wins'}: ${game.reason}`;
     const peak = game.history.reduce((a, h) => (h[1] > a[1] ? h : a), [0, 0]);
     el('g-sum').textContent = `In ${Math.round(game.time / DAY)} days ${num(c.people.ever)} of ${num(game.population)} people (${pct(c.share)}) caught the virus. Cases peaked at ${num(Math.round(peak[1] * game.scale))} on day ${Math.round(peak[0] / DAY)}. An estimated ${num(c.people.dead)} died, and ${num(c.people.immune)} are immune.`;
     el('g-over').classList.add('show');
@@ -1213,8 +1218,7 @@ const tablePlay = params.has('game')
       follower,
       onTable: params.get('game') === 'table' && !follower,
       relay,
-      pool,
-      putBox,
+      size: [WX, WZ],
       act: doAction,
       armed: (side) => gameViews[side].armed,
       pick,
@@ -1321,7 +1325,8 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 el('loading').remove();
-requestAnimationFrame(frame);
+if (boardOnly) renderer.domElement.style.display = 'none';
+else requestAnimationFrame(frame);
 
 window.table = {
   game,
