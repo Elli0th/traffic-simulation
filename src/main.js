@@ -379,28 +379,36 @@ function tellScreens(blobs, now) {
   relay.send('state', { clock: sim.clock, speed, paused, demand: sim.demandScale, x: focus.x, z: focus.z, zoom });
 }
 
-// If the projector cannot open a web page and only accepts pictures, open the table window with
-// ?push=<address>&fps=8 and it sends each frame there as a JPEG. Change the request below to
-// whatever the room's API expects (method, headers, field names).
+// If the display's own browser is too slow to run the city, render it here instead: open this window
+// with ?push=ws://pi-projector.local/frames (or pi-tv-1, pi-tv-2) and every frame goes to that display
+// as a JPEG over its WebSocket. &fps=20 sets the rate. An http address gets each frame as a POST.
 const pushTo = params.get('push');
-const pushGap = 1000 / (Number(params.get('fps')) || 8);
+const pushSocket = pushTo?.startsWith('ws');
+const pushGap = 1000 / (Number(params.get('fps')) || (pushSocket ? 20 : 8));
 let pushAt = 0;
 let pushing = false;
+let frames = null;
 function pushFrame(now) {
   if (!pushTo || pushing || now < pushAt) return;
   pushAt = now + pushGap;
+  if (pushSocket) {
+    if (!frames || frames.readyState > WebSocket.OPEN) frames = new WebSocket(pushTo);
+    // Not connected yet, or the last frame is still on its way: skip this one rather than queue it.
+    if (frames.readyState !== WebSocket.OPEN || frames.bufferedAmount > 0) return;
+  }
   pushing = true;
   renderer.domElement.toBlob(
     async (blob) => {
       try {
-        await fetch(pushTo, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+        if (pushSocket) frames.send(blob);
+        else await fetch(pushTo, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
       } catch {
         // The room is not answering; try again with the next frame.
       }
       pushing = false;
     },
     'image/jpeg',
-    0.85,
+    pushSocket ? 0.75 : 0.85,
   );
 }
 

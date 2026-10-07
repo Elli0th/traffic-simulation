@@ -5,13 +5,14 @@
 // Lengths are millimetres. The lidar is at (0, 0), x to its right and y straight out across the table.
 
 // Turns whatever the lidar's API sends into { angles (radians), ranges (mm) }. Understands:
-//   { angle_min, angle_increment, ranges }      the usual laser-scan message
+//   { t, points: [{ angle, distance, quality }] }   the room's lidar (ws://pi-lidar.local/scan)
+//   { angle_min, angle_increment, ranges }          the usual laser-scan message
 //   [{ angle, distance }] or [[angle, distance]]
 // Angles may be degrees or radians, distances metres or millimetres; it works out which.
 export function decodeScan(body) {
   let angles = [];
   let ranges = [];
-  const scan = body.scan ?? body.data ?? body;
+  const scan = body.points ?? body.scan ?? body.data ?? body;
   if (Array.isArray(scan)) {
     for (const p of scan) {
       angles.push(Array.isArray(p) ? p[0] : p.angle ?? p.theta ?? p.a);
@@ -83,11 +84,28 @@ export class ScanDetector {
     const hits = [];
     for (let i = 0; i < scan.angles.length; i++) {
       const r = scan.ranges[i];
-      const far = this.background.get(this.bin(scan.angles[i]));
+      const k = this.bin(scan.angles[i]);
+      // The readings do not fall on the same angles every sweep, so look half a degree either side too.
+      let far = this.background.get(k);
+      if (far === undefined) {
+        const [left, right] = [this.background.get(k - 1), this.background.get(k + 1)];
+        if (left !== undefined || right !== undefined) far = Math.min(left ?? Infinity, right ?? Infinity);
+      }
       // A direction that was empty space before counts as far away.
       if (r > 30 && r < (far ?? 1e9) - this.margin) hits.push({ a: scan.angles[i], r });
     }
     hits.sort((p, q) => p.a - q.a);
+    // A lidar that sees all the way round has a seam where 360° meets 0°. Start the list at the widest
+    // gap instead, so a hand lying across the seam stays one thing.
+    let widest = hits.length ? hits[0].a + 2 * Math.PI - hits[hits.length - 1].a : 0;
+    let start = 0;
+    for (let i = 1; i < hits.length; i++) {
+      if (hits[i].a - hits[i - 1].a > widest) {
+        widest = hits[i].a - hits[i - 1].a;
+        start = i;
+      }
+    }
+    if (start > 0) hits.push(...hits.splice(0, start).map((h) => ({ a: h.a + 2 * Math.PI, r: h.r })));
     const blips = [];
     let run = [];
     const close = () => {

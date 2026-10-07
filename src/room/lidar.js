@@ -7,16 +7,19 @@ import { applyHomography } from './homography.js';
 import * as relay from './relay.js';
 
 const KEY = 'tangible-table/lidar';
+// The room's lidar. In the virtual room (Docker) it is ws://localhost:8024/scan.
+const ROOM_LIDAR = 'ws://pi-lidar.local/scan';
 const config = {
   source: 'sim',
-  url: '',
+  url: ROOM_LIDAR,
   interval: 80,
   margin: 60,
-  objects: false,
+  objects: true,
   sending: true,
   calibrations: {},
   ...JSON.parse(localStorage.getItem(KEY) || '{}'),
 };
+if (!config.url) config.url = ROOM_LIDAR;
 const save = () => localStorage.setItem(KEY, JSON.stringify(config));
 const $ = (id) => document.getElementById(id);
 
@@ -41,7 +44,6 @@ function connect() {
   socket?.close();
   socket = null;
   latest = null;
-  problem = '';
   scan = null;
   if (config.source !== 'sim' && !config.url) {
     source = null;
@@ -50,9 +52,21 @@ function connect() {
   }
   if (config.source === 'sim') source = new SimulatedLidar();
   else if (config.source === 'ws') {
-    socket = new WebSocket(config.url);
+    const opened = (socket = new WebSocket(config.url));
     socket.onmessage = (event) => (latest = decodeScan(JSON.parse(event.data)));
-    source = { read: async () => latest };
+    socket.onclose = () => {
+      if (socket !== opened) return;
+      problem = `No connection to the lidar at ${config.url}. Is this laptop on the room wifi? Trying again…`;
+      setTimeout(() => socket === opened && connect(), 2000);
+    };
+    // Each sweep is handed out once, however often the page asks.
+    source = {
+      read: async () => {
+        const sweep = latest;
+        latest = null;
+        return sweep;
+      },
+    };
   } else {
     source = {
       read: async () => {
@@ -75,7 +89,7 @@ async function tick() {
     const next = await source.read();
     if (!next) return;
     scan = next;
-    problem = '';
+    if (!socket || socket.readyState === WebSocket.OPEN) problem = '';
   } catch (error) {
     problem = `${error.message}. If the browser blocked the request, start the server with ROOM_API set and use /room-api/… as the address.`;
     return;

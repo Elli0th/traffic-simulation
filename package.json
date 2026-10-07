@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
+    "room": "node scripts/room.mjs",
     "test": "node scripts/test-depth.mjs && node scripts/test-lidar.mjs"
   },
   "dependencies": {
