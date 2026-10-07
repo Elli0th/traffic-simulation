@@ -8,7 +8,7 @@ import * as relay from './relay.js';
 
 const KEY = 'tangible-table/lidar';
 // The room's lidar. In the virtual room (Docker) it is ws://localhost:8024/scan.
-const ROOM_LIDAR = 'ws://pi-lidar.local/scan';
+const ROOM_LIDAR = 'ws://192.168.42.24/scan'; // pi-lidar.local, which resolves slowly on the room network
 const config = {
   source: 'sim',
   url: ROOM_LIDAR,
@@ -19,7 +19,14 @@ const config = {
   calibrations: {},
   ...JSON.parse(localStorage.getItem(KEY) || '{}'),
 };
-if (!config.url) config.url = ROOM_LIDAR;
+if (!config.url || config.url === 'ws://pi-lidar.local/scan') config.url = ROOM_LIDAR;
+// /lidar.html?room reads the room's lidar through the dev server (see vite.config.js), which works
+// even when the browser itself is not allowed onto the local network. ?url=ws://... reads any other.
+const asked = new URLSearchParams(location.search);
+if (asked.has('room') || asked.has('url')) {
+  config.source = 'ws';
+  config.url = asked.get('url') || `ws://${location.host}/room-lidar/scan`;
+}
 const save = () => localStorage.setItem(KEY, JSON.stringify(config));
 const $ = (id) => document.getElementById(id);
 

@@ -17,12 +17,19 @@ const relay = () => ({
 // and use /room-api/... as the address on the camera page; the server fetches it on the page's behalf.
 const api = process.env.ROOM_API;
 
+// The room's lidar, passed on by this server at /room-lidar/scan. A browser that macOS does not let
+// onto the local network cannot open ws://192.168.42.24/scan itself; this server can, as long as it
+// was started from a terminal. ROOM_LIDAR points it somewhere else (http://localhost:8024 in the
+// virtual room).
+const lidar = { target: process.env.ROOM_LIDAR ?? 'http://192.168.42.24', changeOrigin: true, ws: true, rewrite: (path) => path.replace(/^\/room-lidar/, '') };
+
 export default defineConfig({
   plugins: [relay()],
   server: {
-    proxy: api
-      ? { '/room-api': { target: api, changeOrigin: true, ws: true, rewrite: (path) => path.replace(/^\/room-api/, '') } }
-      : undefined,
+    proxy: {
+      '/room-lidar': lidar,
+      ...(api ? { '/room-api': { target: api, changeOrigin: true, ws: true, rewrite: (path) => path.replace(/^\/room-api/, '') } } : {}),
+    },
   },
   build: {
     rollupOptions: { input: ['index.html', 'camera.html', 'lidar.html', 'grid.html', 'draw.html'] },
