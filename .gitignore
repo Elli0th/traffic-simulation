@@ -6,3 +6,16 @@ dist/
 # fetch these again with scripts/fetch-map.mjs only if you want to rebuild a map.
 data/*.json
 data/west/
+
+# Python & Virtual Environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Tangible Demo recordings & snapshots
+recordings/snapshots/
+recordings/*.jsonl
+recordings/*.mp4
+recordings/*.avi

@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tangible Table Touch Surface</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #030712;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #cameraBackground {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    body.camera-view #cameraBackground {
+      opacity: 0.88;
+    }
+    body.camera-view .panel {
+      background: rgba(10, 15, 25, 0.45);
+      border-color: rgba(56, 189, 248, 0.45);
+      backdrop-filter: blur(4px);
+    }
+
+    #rippleCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    #app {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      padding: 24px 36px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      z-index: 10;
+    }
+
+    /* Top Bar */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #38bdf8;
+      text-shadow: 0 0 16px rgba(56, 189, 248, 0.5);
+    }
+    .hud-badges {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .badge {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #94a3b8;
+    }
+    .badge.active {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: #10b981;
+      color: #34d399;
+    }
+    .badge.rec {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: #ef4444;
+      color: #f87171;
+    }
+
+    /* Grid Layout */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-gap: 24px;
+      flex: 1;
+      margin: 20px 0;
+    }
+
+    .panel {
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      padding: 20px;
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .panel h2 {
+      margin: 0 0 14px 0;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel h2 span {
+      font-size: 13px;
+      color: #38bdf8;
+    }
+
+    /* Touch Buttons */
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-gap: 14px;
+    }
+    .t-btn {
+      background: #1e293b;
+      border: 2px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 18px 12px;
+      color: #f8fafc;
+      font-size: 16px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .t-btn i {
+      font-style: normal;
+      font-size: 24px;
+    }
+    .t-btn.active, .t-btn:hover {
+      transform: scale(0.97);
+      border-color: #38bdf8;
+      box-shadow: 0 0 24px rgba(56, 189, 248, 0.6);
+    }
+    .t-btn.cyber { border-color: #f43f5e; color: #fda4af; }
+    .t-btn.sunset { border-color: #f97316; color: #fdba74; }
+    .t-btn.matrix { border-color: #22c55e; color: #86efac; }
+    .t-btn.ocean { border-color: #0284c7; color: #7dd3fc; }
+    .t-btn.white { border-color: #e2e8f0; color: #ffffff; }
+    .t-btn.off { border-color: #64748b; color: #94a3b8; }
+
+    /* Sliders */
+    .slider-group {
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+    .t-slider-track {
+      position: relative;
+      height: 38px;
+      background: #1e293b;
+      border: 2px solid rgba(255, 255, 255, 0.18);
+      border-radius: 19px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .t-slider-fill {
+      height: 100%;
+      width: 70%;
+      background: linear-gradient(90deg, #0284c7, #38bdf8);
+      border-radius: 19px;
+      transition: width 0.08s linear;
+    }
+    .t-slider-track.hue .t-slider-fill {
+      width: 100%;
+      background: linear-gradient(90deg, red, yellow, lime, cyan, blue, magenta, red);
+    }
+    .t-slider-thumb {
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      width: 32px;
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+
+    /* TVs Panel */
+    .tv-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-gap: 14px;
+    }
+    .tv-box {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .tv-box h3 {
+      margin: 0 0 10px 0;
+      font-size: 15px;
+      color: #38bdf8;
+      text-align: center;
+    }
+
+    /* Bottom Info & Verification */
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    #touchStatus {
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .rec-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #camThumb {
+      width: 60px;
+      height: 34px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      object-fit: cover;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <img id="cameraBackground" src="" alt="Live Overhead Camera Stream">
+  <canvas id="rippleCanvas"></canvas>
+
+  <div id="app">
+    <!-- Top Bar -->
+    <header>
+      <h1>Tangible Table Surface</h1>
+      <div class="hud-badges">
+        <div id="badgeLidar" class="badge active">Lidar: Connected (10 RPS)</div>
+        <div id="badgeProjector" class="badge active">Table: 1920x1200</div>
+        <div id="badgeRecord" class="badge rec">&#9679; Recording Active</div>
+      </div>
+    </header>
+
+    <!-- Main Control Surface -->
+    <div class="dashboard-grid">
+      <!-- Left Panel: Philips Hue Room Mood -->
+      <div class="panel">
+        <h2>Philips Hue Mood Lighting <span>Spots &amp; TV Strips</span></h2>
+        
+        <div class="btn-grid">
+          <div class="t-btn cyber" data-action="scene_cyber">
+            <i>&#127800;</i> Cyberpunk
+          </div>
+          <div class="t-btn sunset" data-action="scene_sunset">
+            <i>&#127749;</i> Sunset
+          </div>
+          <div class="t-btn matrix" data-action="scene_matrix">
+            <i>&#127794;</i> Matrix
+          </div>
+          <div class="t-btn ocean" data-action="scene_ocean">
+            <i>&#127754;</i> Ocean Blue
+          </div>
+          <div class="t-btn white" data-action="scene_white">
+            <i>&#128161;</i> Warm White
+          </div>
+          <div class="t-btn off" data-action="scene_off">
+            <i>&#127761;</i> Lights Off
+          </div>
+        </div>
+
+        <div class="slider-group">
+          <!-- Brightness Slider -->
+          <div class="slider-row">
+            <div class="slider-label">
+              <span>Room Brightness</span>
+              <span id="briVal">80%</span>
+            </div>
+            <div class="t-slider-track" id="sliderBri" data-slider="bri">
+              <div class="t-slider-fill" id="fillBri" style="width: 80%;"></div>
+            </div>
+          </div>
+
+          <!-- Color Hue Slider -->
+          <div class="slider-row">
+            <div class="slider-label">
+              <span>Color Spectrum Hue</span>
+              <span id="hueVal">Blue</span>
+            </div>
+            <div class="t-slider-track hue" id="sliderHue" data-slider="hue">
+              <div class="t-slider-thumb" id="thumbHue" style="left: 65%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Panel: TV 1 & TV 2 Displays -->
+      <div class="panel">
+        <h2>Room TV Displays <span>LG 49" 1920x1080</span></h2>
+
+        <div class="tv-split">
+          <!-- TV 1 -->
+          <div class="tv-box">
+            <h3>TV 1 (Left Screen)</h3>
+            <div class="btn-grid" style="grid-template-columns: 1fr 1fr;">
+              <div class="t-btn" style="border-color:#ef4444; color:#f87171;" data-action="tv1_red">Red</div>
+              <div class="t-btn" style="border-color:#3b82f6; color:#60a5fa;" data-action="tv1_blue">Blue</div>
+              <div class="t-btn" style="border-color:#10b981; color:#34d399;" data-action="tv1_green">Green</div>
+              <div class="t-btn" style="border-color:#f59e0b; color:#fbbf24;" data-action="tv1_amber">Amber</div>
+            </div>
+          </div>
+
+          <!-- TV 2 -->
+          <div class="tv-box">
+            <h3>TV 2 (Right Screen)</h3>
+            <div class="btn-grid" style="grid-template-columns: 1fr 1fr;">
+              <div class="t-btn" style="border-color:#ec4899; color:#f472b6;" data-action="tv2_magenta">Magenta</div>
+              <div class="t-btn" style="border-color:#06b6d4; color:#22d3ee;" data-action="tv2_cyan">Cyan</div>
+              <div class="t-btn" style="border-color:#8b5cf6; color:#a78bfa;" data-action="tv2_purple">Purple</div>
+              <div class="t-btn" style="border-color:#f8fafc; color:#ffffff;" data-action="tv2_white">White</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+          <div class="t-btn" style="border-color:#38bdf8;" data-action="sync_tvs">
+            <i>&#128257;</i> Sync TVs
+          </div>
+          <div class="t-btn cam" id="btnToggleCam" style="border-color:#10b981; color:#34d399;" data-action="toggle_camera">
+            <i>&#128247;</i> Project Camera
+          </div>
+          <div class="t-btn" style="border-color:#64748b;" data-action="verify_camera">
+            <i>&#128248;</i> Snap Verify
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Bar -->
+    <footer>
+      <div>Touch Status: <span id="touchStatus">Scanning table for hand/finger touches...</span></div>
+      <div class="rec-box">
+        <img id="camThumb" src="" alt="Verification Snapshot">
+        <span>Verified by Overhead Logitech Brio 4K Camera</span>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // Audio feedback synth
+    let audioCtx = null;
+    function playBeep(freq = 600, duration = 0.06) {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    // Ripple Canvas
+    const canvas = document.getElementById('rippleCanvas');
+    const ctx = canvas.getContext('2d');
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    const ripples = [];
+    class TouchRipple {
+      constructor(x, y, color = '#38bdf8') {
+        this.x = x;
+        this.y = y;
+        this.r = 15;
+        this.alpha = 1.0;
+        this.color = color;
+      }
+      update() {
+        this.r += 4;
+        this.alpha -= 0.05;
+      }
+      draw(g) {
+        g.save();
+        g.beginPath();
+        g.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        g.strokeStyle = this.color;
+        g.globalAlpha = Math.max(0, this.alpha);
+        g.lineWidth = 3;
+        g.stroke();
+
+        g.beginPath();
+        g.arc(this.x, this.y, 6, 0, Math.PI * 2);
+        g.fillStyle = '#ffffff';
+        g.globalAlpha = Math.max(0, this.alpha);
+        g.fill();
+        g.restore();
+      }
+    }
+
+    function renderLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const r = ripples[i];
+        r.update();
+        r.draw(ctx);
+        if (r.alpha <= 0) ripples.splice(i, 1);
+      }
+      requestAnimationFrame(renderLoop);
+    }
+    requestAnimationFrame(renderLoop);
+
+    // Send Registered Bounding Boxes to Backend
+    function reportElements() {
+      const elements = [];
+      document.querySelectorAll('[data-action]').forEach(el => {
+        const rect = el.getBoundingClientRect();
+        elements.push({
+          type: 'button',
+          id: el.dataset.action,
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          w: Math.round(rect.width),
+          h: Math.round(rect.height)
+        });
+      });
+
+      document.querySelectorAll('[data-slider]').forEach(el => {
+        const rect = el.getBoundingClientRect();
+        elements.push({
+          type: 'slider',
+          id: el.dataset.slider,
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          w: Math.round(rect.width),
+          h: Math.round(rect.height)
+        });
+      });
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'register_elements', elements }));
+      }
+    }
+
+    // WebSocket to Python Backend
+    let ws = null;
+    function connectWs() {
+      ws = new WebSocket(`ws://${location.host}/ws/table`);
+      ws.onopen = () => {
+        reportElements();
+      };
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'touch') {
+            ripples.push(new TouchRipple(msg.x, msg.y, msg.hit ? '#4ade80' : '#38bdf8'));
+            document.getElementById('touchStatus').textContent =
+              `Touch detected at (${msg.x}, ${msg.y}) px [Table ${msg.x_mm}mm, ${msg.y_mm}mm]${msg.action ? ' -> Pressed: ' + msg.action : ''}`;
+          }
+          if (msg.type === 'action_triggered') {
+            playBeep(msg.id.includes('off') ? 300 : 750);
+            const el = document.querySelector(`[data-action="${msg.id}"]`);
+            if (el) {
+              el.classList.add('active');
+              setTimeout(() => el.classList.remove('active'), 350);
+            }
+          }
+          if (msg.type === 'slider_updated') {
+            if (msg.id === 'bri') {
+              document.getElementById('fillBri').style.width = `${msg.pct}%`;
+              document.getElementById('briVal').textContent = `${Math.round(msg.pct)}%`;
+            } else if (msg.id === 'hue') {
+              document.getElementById('thumbHue').style.left = `${msg.pct}%`;
+              document.getElementById('hueVal').textContent = `${Math.round(msg.pct)}%`;
+            }
+          }
+          if (msg.type === 'camera_snapshot') {
+            const thumb = document.getElementById('camThumb');
+            thumb.src = msg.data_url;
+            thumb.style.display = 'inline-block';
+          }
+          if (msg.type === 'camera_view_toggled') {
+            const camBg = document.getElementById('cameraBackground');
+            const btn = document.getElementById('btnToggleCam');
+            if (msg.active) {
+              document.body.classList.add('camera-view');
+              camBg.src = msg.stream_url || 'http://192.168.42.21/camera/stream';
+              if (btn) btn.innerHTML = '<i>&#127915;</i> Hide Camera';
+            } else {
+              document.body.classList.remove('camera-view');
+              camBg.src = '';
+              if (btn) btn.innerHTML = '<i>&#128247;</i> Project Camera';
+            }
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      };
+      ws.onclose = () => {
+        setTimeout(connectWs, 2000);
+      };
+    }
+    connectWs();
+    window.addEventListener('resize', reportElements);
+
+    // Click fallback for mouse/laptop testing
+    document.querySelectorAll('[data-action]').forEach(el => {
+      el.addEventListener('pointerdown', () => {
+        const act = el.dataset.action;
+        fetch('/api/action', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ action: act })
+        });
+      });
+    });
+
+    document.querySelectorAll('[data-slider]').forEach(slider => {
+      slider.addEventListener('pointerdown', (e) => {
+        const rect = slider.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+        fetch('/api/slider', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ slider: slider.dataset.slider, pct })
+        });
+      });
+    });
+  </script>
+</body>
+</html>

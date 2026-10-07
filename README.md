@@ -9,6 +9,15 @@ npm install
 npm run dev
 ```
 
+> [!TIP]
+> **Looking for the Tangible Table Surface Demo?**
+> On this branch (`table-demo`), we've added the standalone interactive table control surface with RPLIDAR C1 hand tracking, continuous sliders, live camera projection, and Philips Hue / TV controls.
+> See [README_TABLE_DEMO.md](README_TABLE_DEMO.md) for full documentation, or run:
+> ```bash
+> pip install -r requirements.txt
+> python apps/tangible_surface/run_demo.py
+> ```
+
 Open http://localhost:5173 for the city centre, or http://localhost:5173/?map=west for the larger
 map. The first version, a small invented grid city, is still at `/grid.html`.
 
