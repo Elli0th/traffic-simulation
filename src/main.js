@@ -14,6 +14,7 @@ import * as relay from './room/relay.js';
 import { VirusLighting } from './room/hue-lights.js';
 import { buildDashboardPayload } from './room/dashboard-data.js';
 import { LidarTouchController } from './room/lidar-touch.js';
+import { FrameStreamer } from './room/frame-streamer.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
 const MAX_STEP = 0.12; // longest simulation step, in seconds, that keeps the driving model stable
@@ -54,9 +55,18 @@ const lighting = gameMode ? new VirusLighting() : null;
 const actionHistory = [];
 let touchCtx = null;
 let lidarTouch = null;
+let streamer = null;
 if (game) {
   document.body.classList.add('game');
-  window.addEventListener('beforeunload', () => lighting?.restoreNeutral());
+  window.addEventListener('beforeunload', () => {
+    lighting?.restoreNeutral();
+    streamer?.stop();
+  });
+  streamer = new FrameStreamer({
+    url: params.get('stream_url') || 'ws://192.168.42.21/frames',
+    enabled: params.get('stream') !== 'false',
+  });
+  streamer.start();
 }
 
 function stepAll(dt) {
@@ -1647,6 +1657,7 @@ function frame(now) {
   }
   tellScreens(blobs, now);
   pushFrame(now);
+  if (streamer) streamer.pushFrame(renderer.domElement, touchCtx?.canvas);
 }
 el('loading').remove();
 if (boardOnly) renderer.domElement.style.display = 'none';

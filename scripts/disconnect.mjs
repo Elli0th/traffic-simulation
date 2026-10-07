@@ -51,8 +51,9 @@ async function run() {
 
   // 1. Reset all 3 displays in parallel
   const displayTasks = DISPLAYS.map(async (d) => {
-    const res = await postWithTimeout(d.url, { idle: true });
-    return `${d.name}: ${res.ok ? 'idle' : res.error || 'done'}`;
+    const body = d.name.includes('Projector') ? { blank: true } : { idle: true };
+    const res = await postWithTimeout(d.url, body);
+    return `${d.name}: ${res.ok ? 'done' : res.error || 'done'}`;
   });
 
   // 2. Reset all 8 Hue lights in parallel
