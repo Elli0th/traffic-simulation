@@ -540,7 +540,7 @@
         if(next) {location.replace(new URL(next,location.href));return;}
         lastState = state; receivedAt=performance.now();
         if((autoSide||state.mode==='solo') && side!==(state.role||'curber')) configureSide(state.role||'curber');
-        document.getElementById('f-subtitle').textContent=state.mode==='solo'?`Solo ${isSpreader?'Spreader':'Government'} · 2-minute round${state.paused?' · PAUSED':''}${state.phase==='over'?' · FINISHED':''}` : (isSpreader ? 'Gothenburg Outbreak Offensive · Television 1 (Left)' : 'Epidemic Containment Operations · Television 2 (Right)');
+        document.getElementById('f-subtitle').textContent=state.mode==='solo'?`Solo ${isSpreader?'Spreader':'Government'} · 3-minute round${state.paused?' · PAUSED':''}${state.phase==='over'?' · FINISHED':''}` : (isSpreader ? 'Gothenburg Outbreak Offensive · Television 1 (Left)' : 'Epidemic Containment Operations · Television 2 (Right)');
 
         const left = Math.max(0, state.timeLeft || 0);
         document.getElementById('m-timer').textContent = formatDisplayTime(state.timeLeft);

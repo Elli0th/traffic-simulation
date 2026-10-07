@@ -126,7 +126,8 @@ function frame() {
           sent++;
           bytes += blob.size;
           problem = '';
-        } else if (capture) problem = `${answer.why[0].toUpperCase()}${answer.why.slice(1)}. Trying again…`;
+        } else if (answer.late) problem = ''; // slow, not gone: adapt() sends less picture
+        else if (capture) problem = `${answer.why[0].toUpperCase()}${answer.why.slice(1)}. Trying again…`;
       } catch {
         if (capture) problem = 'The dev server is not answering.';
       } finally {

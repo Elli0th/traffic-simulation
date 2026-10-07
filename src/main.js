@@ -1374,7 +1374,10 @@ if (game) {
         return;
       }
       // 2. Map tap to map world coordinate. A touch on a panel beside the buttons is not a touch on the map.
-      if (!sideAt(screenX, screenY, innerWidth, innerHeight)) return;
+      const mapSide = sideAt(screenX, screenY, innerWidth, innerHeight);
+      if (!mapSide) return;
+      side = mapSide; // the map that was touched, which near the middle line is not always the table's half
+      activeSide = side;
       if (gameViews[side].armed !== 'barrier') trenchStart = null;
       const fakeEvent = { clientX: screenX, clientY: screenY };
       const p = pick(fakeEvent, side);
@@ -1608,13 +1611,20 @@ const broadcastStartedAt = Date.now();
 let dashboardSequence=0;
 const broadcastSession = globalThis.crypto?.randomUUID?.() || `${broadcastStartedAt}-${Math.random().toString(36).slice(2)}`;
 let broadcastSequence = 0, sceneSentAt = -Infinity;
+// Every person's place, ten times a second, is about 3 Mbit/s to every window on the dev server: only
+// while a TV map has asked for it in the last few seconds (it asks again every three).
+let sceneWantedUntil = -Infinity;
 function broadcastScene(now, force = false) {
-  if (follower || !game || (!force && now-sceneSentAt<100)) return;
+  if (follower || !game || now > sceneWantedUntil || (!force && now-sceneSentAt<100)) return;
   sceneSentAt=now;
   relay.send('game_scene', gameSceneState(game, {session:broadcastSession,startedAt:broadcastStartedAt,
     sequence:++broadcastSequence,roundTime,paused,selectionPending:el('g-menu').classList.contains('show'),map:mapName||'central',view:gameViews[soloRole||'spreader']}));
 }
-relay.on('scene_request', () => broadcastScene(performance.now(),true));
+relay.on('scene_request', () => {
+  const now = performance.now(), fresh = now > sceneWantedUntil;
+  sceneWantedUntil = now + 8000;
+  if (fresh) broadcastScene(now, true); // a TV map that has just opened gets the picture at once
+});
 if (game) {
   el('g-pause').addEventListener('click', () => {
     if (!soloRole || game.phase === 'over') return;
@@ -1817,8 +1827,8 @@ function modeUrl(name) {
 }
 const mode = params.has('game') ? 'game' : 'traffic';
 // A bare address asks first: the game or the traffic viewer. An address that already says what it is
-// (?game, ?traffic, ?view=screen, or ?nohud as the room's displays are given) goes straight there.
-if (!['game', 'traffic', 'view', 'nohud'].some((k) => params.has(k))) {
+// (?game, ?traffic, ?view=screen, ?push, or ?nohud as the room's displays are given) goes straight there.
+if (!['game', 'traffic', 'view', 'nohud', 'push'].some((k) => params.has(k))) {
   const start = el('start-menu');
   start.classList.add('show');
   const choose = (what) => {

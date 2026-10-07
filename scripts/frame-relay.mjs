@@ -28,10 +28,12 @@ function open(address, path, onClose) {
   const frame = (opcode, payload) => {
     const n = payload.length;
     const head = n < 126 ? Buffer.from([0x80 | opcode, 0x80 | n]) : n < 65536 ? Buffer.from([0x80 | opcode, 0x80 | 126, n >> 8, n & 255]) : Buffer.concat([Buffer.from([0x80 | opcode, 0x80 | 127]), Buffer.from(new BigUint64Array([BigInt(n)]).buffer).reverse()]);
-    const mask = crypto.randomBytes(4);
-    const body = Buffer.allocUnsafe(n);
-    for (let i = 0; i < n; i++) body[i] = payload[i] ^ mask[i & 3];
-    socket.write(Buffer.concat([head, mask, body]));
+    // The mask is four zero bytes, which leaves the payload as it is: no pass over 150 kB a frame, and
+    // no copy either, as the header and the payload are written one after the other.
+    socket.cork();
+    socket.write(Buffer.concat([head, Buffer.alloc(4)]));
+    socket.write(payload);
+    socket.uncork();
   };
   link.send = (jpeg) =>
     new Promise((resolve) => {
@@ -130,7 +132,8 @@ export function frameRelay(displays) {
           if (!(await link.opened) || !link.ready) return answer({ ok: false, why: `no connection to the ${name}` });
           const started = performance.now();
           const arrived = await link.send(Buffer.concat(chunks));
-          answer(arrived ? { ok: true, ms: Math.round(performance.now() - started) } : { ok: false, why: `the ${name} did not answer in time` });
+          // late: the link is there but slow, which the page answers by sending less picture.
+          answer(arrived ? { ok: true, ms: Math.round(performance.now() - started) } : { ok: false, late: link.ready, why: `the ${name} did not answer in time` });
         });
       });
       // The page says when it stops, so the display is not left with a sender that sends nothing.

@@ -83,6 +83,8 @@ relay.on('game_scene',async packet=>{
   }
 });
 relay.send('scene_request',{});
+// Asked again every few seconds: the game only sends the scene while a TV map is there to draw it.
+setInterval(()=>relay.send('scene_request',{}),3000);
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();if(followCamera&&receiver.state&&mapSize)fitView(receiver.state.camera);}
 addEventListener('resize',resize); resize();
 function frame(now) {
