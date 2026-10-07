@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { TRENCH_RADIUS, pointSegmentDistance, crossesTrench } from '../src/trench-geometry.js';
+import { TRENCH_RADIUS, pointSegmentDistance, crossesTrench, fitTrenchLine } from '../src/trench-geometry.js';
 import { TrenchEffects } from '../src/trench-effects.js';
 import { Outbreak, S, I } from '../src/virus.js';
 import { stepOutbreakWorld } from '../src/game-runtime.js';
@@ -50,7 +50,27 @@ effect.draw({time:615,barrierPreview:null},true);
 assert.deepEqual(effect.pieces.instanceMatrix.array,positions,'Pause freezes particle positions');
 effect.draw({time:900,barrierPreview:null},true);
 assert.equal(effect.pieces.count,0); assert.equal(effect.flashes.count,0);
+assert.equal(effect.pieces.visible,false,'Pieces mesh hidden when particle count is zero');
+assert.equal(effect.flashes.visible,false,'Flashes mesh hidden when particle count is zero');
+assert.equal(effect.fireballs.visible,false,'Fireballs mesh hidden when particle count is zero');
+assert.equal(effect.dust.visible,false,'Dust mesh hidden when particle count is zero');
 assert.equal(effect.maskData[256*512+256],255,'The black trench remains after the explosion');
+
+// Test 2D PCA line fitting through a scattered cloud of taps:
+const horizontalCloud = [{x:100,z:50},{x:150,z:48},{x:200,z:52},{x:260,z:50}];
+const hFit = fitTrenchLine(horizontalCloud);
+assert.ok(hFit);
+assert.ok(hFit.length >= 155 && hFit.length <= 165);
+assert.ok(Math.abs(hFit.start.z - 50) < 3 && Math.abs(hFit.end.z - 50) < 3);
+
+const diagonalCloud = [{x:10,z:10},{x:50,z:48},{x:100,z:102},{x:150,z:148}];
+const dFit = fitTrenchLine(diagonalCloud);
+assert.ok(dFit);
+assert.ok(dFit.length >= 190);
+
+const tinyCloud = [{x:10,z:10},{x:12,z:11},{x:11,z:13}];
+assert.equal(fitTrenchLine(tinyCloud, 40), null, 'Rejects clouds under 40m');
+
 for(const material of [groundMaterial,buildings.material]) {
   const shader={uniforms:{},vertexShader:THREE.ShaderLib.basic.vertexShader,fragmentShader:THREE.ShaderLib.basic.fragmentShader};
   material.onBeforeCompile(shader,{});
@@ -58,4 +78,4 @@ for(const material of [groundMaterial,buildings.material]) {
   assert.ok(shader.fragmentShader.includes('texture2D(trenchMask'));
   assert.ok(shader.uniforms.trenchMask.value===effect.mask);
 }
-console.log('Trench width, movement, contact blocking, actual terrain/building damage mask, explosions, pause and persistence passed.');
+console.log('Trench width, movement, contact blocking, actual terrain/building damage mask, explosions, pause, 2D PCA line fitting and persistence passed.');

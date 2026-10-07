@@ -32,6 +32,7 @@ export class LidarTouchController {
     this.clusterRadius = options.clusterRadius || 80.0; // mm
     this.minPoints = options.minPoints || 2;
     this.onTap = options.onTap || null; // (side, u, v, screenX, screenY) => void
+    this.onPoint = options.onPoint || null; // (side, u, v, screenX, screenY) => void
     this.activeTouches = new Map(); // id -> { id, u, v, side, startTime, x, y }
     this.ws = null;
     this.connected = false;
@@ -226,11 +227,15 @@ export class LidarTouchController {
         touch.v = normV;
         touch.side = normU < 0.5 ? 'spreader' : 'curber';
         liveTouchIds.add(id);
+
+        if (this.onPoint && typeof window !== 'undefined') {
+          this.onPoint(touch.side, normU, normV, normU * window.innerWidth, normV * window.innerHeight);
+        }
       } else {
         // Did not match; if gone for > 200ms, mark as ended tap
         if (now - touch.lastSeen > 200) {
           const duration = now - touch.startTime;
-          if (duration >= 80 && duration <= 1200) {
+          if (duration >= 80 && duration <= 2500) {
             this.handleTap(touch);
           }
           this.activeTouches.delete(id);
@@ -255,8 +260,13 @@ export class LidarTouchController {
           lastSeen: now,
         };
         this.activeTouches.set(id, touch);
-        // Add visual ripple
-        this.addRipple(normU * window.innerWidth, normV * window.innerHeight, touch.side);
+        // Add visual ripple and broadcast touch point
+        if (typeof window !== 'undefined') {
+          this.addRipple(normU * window.innerWidth, normV * window.innerHeight, touch.side);
+          if (this.onPoint) {
+            this.onPoint(touch.side, normU, normV, normU * window.innerWidth, normV * window.innerHeight);
+          }
+        }
       }
     });
   }

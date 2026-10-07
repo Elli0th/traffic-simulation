@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { TrenchEffects } from './trench-effects.js';
+import { fitTrenchLine } from './trench-geometry.js';
 import { Sim, LANE_WIDTH } from './sim.js';
 import { Trams, Ferries, inTunnel } from './transit.js';
 import { People } from './people.js';
@@ -67,9 +68,11 @@ if (game) {
     lighting?.restoreNeutral();
     streamer?.stop();
   });
+  const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const shouldStream = params.get('stream') === 'true' || (isLocalHost && params.get('stream') !== 'false');
   streamer = new FrameStreamer({
     url: params.get('stream_url') || 'ws://192.168.42.21/frames',
-    enabled: params.get('stream') !== 'false',
+    enabled: shouldStream,
   });
   streamer.start();
 }
@@ -1110,7 +1113,15 @@ function doAction(side, name, p) {
   if (['seed', 'party', 'sickwork', 'lockdown', 'festival', 'relocate', 'barrier', 'clinic', 'tracing'].includes(name) && !p) {
     if (name !== 'seed' && !game.available(name)) { toast(side, 'This action is locked, cooling down, or needs more points.'); return; }
     v.armed = v.armed === name ? null : name;
-    toast(side, v.armed ? `${name === 'barrier' ? 'Drag across your map' : 'Click your map'}: ${ACTIONS[name]?.label || 'place patient zero'}. Escape cancels.` : 'Selection cancelled.');
+    if (name === 'barrier') {
+      if (v.armed === 'barrier') startSeismicSession(side);
+      else cancelSeismicSession();
+    } else if (seismicSession) {
+      cancelSeismicSession();
+    }
+    if (name !== 'barrier') {
+      toast(side, v.armed ? `Click your map: ${ACTIONS[name]?.label || 'place patient zero'}. Escape cancels.` : 'Selection cancelled.');
+    }
     updateGame();
     return;
   }
@@ -1139,6 +1150,146 @@ function doAction(side, name, p) {
   }
   updateGame();
 }
+
+let seismicSession = null;
+
+function startSeismicSession(side) {
+  if (seismicSession) cancelSeismicSession();
+  const now = performance.now();
+  seismicSession = {
+    side,
+    startedAt: now,
+    endsAt: now + 5000,
+    duration: 5000,
+    points: [],
+  };
+  game.barrierPreview = null;
+  toast(side, 'Seismic charges armed! Tap or swipe your target line on the map (5s countdown).');
+  updateGame();
+}
+
+function cancelSeismicSession() {
+  if (!seismicSession) return;
+  const side = seismicSession.side;
+  seismicSession = null;
+  game.barrierPreview = null;
+  if (gameViews[side]?.armed === 'barrier') gameViews[side].armed = null;
+  updateGame();
+}
+
+function recordSeismicPoint(p) {
+  if (!seismicSession || !p || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return;
+  const last = seismicSession.points.at(-1);
+  if (last && Math.hypot(p.x - last.x, p.z - last.z) < 6) return;
+  seismicSession.points.push({ x: p.x, z: p.z, at: performance.now() });
+
+  if (seismicSession.points.length >= 2) {
+    const fit = fitTrenchLine(seismicSession.points, 20);
+    if (fit) game.barrierPreview = fit.points;
+  }
+}
+
+function finalizeSeismicSession() {
+  if (!seismicSession) return;
+  const session = seismicSession;
+  seismicSession = null;
+  game.barrierPreview = null;
+  if (gameViews[session.side]) gameViews[session.side].armed = null;
+
+  if (session.points.length < 2) {
+    toast(session.side, 'Seismic trench cancelled: not enough taps recorded. Power refunded.');
+    updateGame();
+    return;
+  }
+
+  const fit = fitTrenchLine(session.points, 40);
+  if (!fit) {
+    toast(session.side, 'Seismic trench cancelled: line was shorter than 40m. Power refunded.');
+    updateGame();
+    return;
+  }
+
+  if (game.addBarrier(fit.points)) {
+    trenchEffects?.commit(game.barriers.at(-1), game.time);
+    toast(session.side, 'Seismic trench detonated! The shattered ground stays destroyed for the round. Infection cannot cross it.');
+  } else {
+    toast(session.side, 'Unavailable: check your points or cooldown.');
+  }
+  updateGame();
+}
+
+function drawSeismicOverlay(ctx, now) {
+  if (!seismicSession) return;
+  const remaining = Math.max(0, (seismicSession.endsAt - now) / 1000);
+  const frac = Math.min(1, Math.max(0, (seismicSession.endsAt - now) / seismicSession.duration));
+  const side = seismicSession.side;
+  const r = gameRect(side, innerWidth, innerHeight);
+
+  // 1. Draw glowing markers at recorded tap points
+  for (let i = 0; i < seismicSession.points.length; i++) {
+    const pt = seismicSession.points[i];
+    const scr = screenPoint(side, pt.x, pt.z);
+    ctx.save();
+    ctx.beginPath();
+    const pulse = 8 + Math.sin((now - pt.at) * 0.008) * 3;
+    ctx.arc(scr.x, scr.y, pulse, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff7b2b';
+    ctx.shadowColor = '#ff3300';
+    ctx.shadowBlur = 12;
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = 1.0;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // 2. Draw countdown badge on Curber's side
+  ctx.save();
+  const centerX = r.x + r.width / 2;
+  const centerY = r.y + 70;
+  const badgeW = 290, badgeH = 56;
+
+  ctx.fillStyle = 'rgba(15, 20, 28, 0.9)';
+  ctx.strokeStyle = '#ff7b2b';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#ff7b2b';
+  ctx.shadowBlur = 14;
+
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(centerX - badgeW / 2, centerY - badgeH / 2, badgeW, badgeH, 12);
+  } else {
+    ctx.rect(centerX - badgeW / 2, centerY - badgeH / 2, badgeW, badgeH);
+  }
+  ctx.fill();
+  ctx.stroke();
+
+  // Progress bar along the bottom of the badge
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#ff4520';
+  ctx.fillRect(centerX - badgeW / 2 + 10, centerY + badgeH / 2 - 8, (badgeW - 20) * frac, 4);
+
+  // Text
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`SEISMIC CHARGE: ${remaining.toFixed(1)}s`, centerX, centerY - 6);
+
+  ctx.fillStyle = '#ffb055';
+  ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  const countText = seismicSession.points.length === 0
+    ? 'Tap or swipe line on map...'
+    : `${seismicSession.points.length} points · ${game.barrierPreview ? Math.round(fitTrenchLine(seismicSession.points, 20)?.length || 0) + 'm line' : 'placing...'}`;
+  ctx.fillText(countText, centerX, centerY + 11);
+
+  ctx.restore();
+}
+
 const GAME_KEYS = { q: 'party', w: 'antimask', e: 'antivaxx', r: 'sickwork', a: 'fakenews', i: 'lockdown', o: 'vaccines', p: 'distancing', l: 'hospitals', k: 'newvaccine', j: 'education' };
 if (game) {
   for (const button of document.querySelectorAll('[data-home]')) button.addEventListener('click', () => {
@@ -1153,7 +1304,6 @@ if (game) {
     for (const b of panel.querySelectorAll('[data-act]')) b.addEventListener('click', () => doAction(side, b.dataset.act));
     for (const b of panel.querySelectorAll('[data-zoom]')) b.addEventListener('click', () => b.dataset.zoom === 'fit' ? updateGameCamera(side, true) : zoomGame(side, Number(b.dataset.zoom)));
   }
-  let stroke = null;
   renderer.domElement.addEventListener('pointerdown', e => {
     if (e.button !== 0 || e.shiftKey) return;
     e.stopImmediatePropagation();
@@ -1162,10 +1312,8 @@ if (game) {
     activeSide = side;
     const p = pick(e, side);
     if (!p) return;
-    if (!paused && soloRole === 'curber' && side === 'curber' && gameViews.curber.armed === 'barrier' && game.available('barrier')) {
-      stroke = { id: e.pointerId, points: [p], length: 0 };
-      game.barrierPreview = stroke.points;
-      renderer.domElement.setPointerCapture(e.pointerId);
+    if (!paused && (side === 'curber' || soloRole === 'curber') && gameViews.curber.armed === 'barrier' && game.available('barrier')) {
+      if (seismicSession) recordSeismicPoint(p);
       return;
     }
     if (game.phase === 'setup' && side === 'spreader') doAction(side, 'seed', p);
@@ -1174,28 +1322,22 @@ if (game) {
   addEventListener('keydown', e => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement) return;
     if (GAME_KEYS[e.key]) doAction(activeSide, GAME_KEYS[e.key]);
-    if (e.key === 'Escape') { gameViews[activeSide].armed = null; toast(activeSide, 'Selection cancelled.'); updateGame(); }
+    if (e.key === 'Escape') {
+      gameViews[activeSide].armed = null;
+      if (seismicSession) cancelSeismicSession();
+      toast(activeSide, 'Selection cancelled.');
+      updateGame();
+    }
   });
 
   renderer.domElement.style.touchAction = 'none';
   renderer.domElement.addEventListener('pointermove', e => {
-    if (paused || !stroke || stroke.id !== e.pointerId) return;
-    const p = pick(e, 'curber'), last = stroke.points.at(-1);
-    if (!p || sideAt(e.clientX, e.clientY, innerWidth, innerHeight) !== 'curber') return;
-    const distance = Math.hypot(p.x-last.x,p.z-last.z);
-    if (distance < 20 || stroke.length + distance > 1800 || stroke.points.length >= 100) return;
-    stroke.length += distance; stroke.points.push(p);
-  });
-  const finishStroke = e => {
-    if (!stroke || stroke.id !== e.pointerId) return;
-    if (!paused && e.type === 'pointerup' && stroke.length >= 40 && game.addBarrier(stroke.points)) {
-      gameViews.curber.armed = null;
-      trenchEffects.commit(game.barriers.at(-1), game.time);
-      toast('curber', 'Seismic trench detonated! The shattered ground stays destroyed for the round. Infection cannot cross it.');
+    if (paused) return;
+    if (seismicSession && (e.buttons > 0 || e.pointerType === 'touch') && sideAt(e.clientX, e.clientY, innerWidth, innerHeight) === seismicSession.side) {
+      const p = pick(e, seismicSession.side);
+      if (p) recordSeismicPoint(p);
     }
-    stroke = null; game.barrierPreview = null; updateGame();
-  };
-  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) renderer.domElement.addEventListener(type, finishStroke);
+  });
 
   // Visual touch ripple canvas for projected table
   const touchCanvas = document.createElement('canvas');
@@ -1212,6 +1354,13 @@ if (game) {
 
   // Real-time RPLIDAR C1 touch engine for table projection
   lidarTouch = new LidarTouchController({
+    onPoint: (side, u, v, screenX, screenY) => {
+      if (seismicSession && side === seismicSession.side && !paused) {
+        const fakeEvent = { clientX: screenX, clientY: screenY };
+        const p = pick(fakeEvent, side);
+        if (p) recordSeismicPoint(p);
+      }
+    },
     onTap: (side, u, v, screenX, screenY) => {
       activeSide = side;
       // 1. Check if a game button was tapped
@@ -1226,6 +1375,10 @@ if (game) {
       const fakeEvent = { clientX: screenX, clientY: screenY };
       const p = pick(fakeEvent, side);
       if (!p) return;
+      if (seismicSession && side === seismicSession.side && !paused) {
+        recordSeismicPoint(p);
+        return;
+      }
       if (game.phase === 'setup' && side === 'spreader') {
         doAction(side, 'seed', p);
       } else if (gameViews[side].armed) {
@@ -1244,7 +1397,7 @@ const SHORT_ACTION = { seed: 'Patient zero', clinic: 'Vaccine clinic', tracing: 
 function screenPoint(side, x, z) {
   const r = gameRect(side, innerWidth, innerHeight);
   markerPoint.set(x, 0, z).project(gameViews[side].cam);
-  return { x: (markerPoint.x + 1) * r.width / 2, y: (1 - markerPoint.y) * r.height / 2 };
+  return { x: (markerPoint.x + 1) * r.width / 2 + (r.x || 0), y: (1 - markerPoint.y) * r.height / 2 + (r.y || 0) };
 }
 function focusAction(side, event) {
   const p = event.worker || event;
@@ -1445,6 +1598,7 @@ if (game) {
     if (!soloRole || game.phase === 'over') return;
     paused = !paused;
     for (const side of SIDES) gameViews[side].armed = null;
+    if (seismicSession) cancelSeismicSession();
     game.barrierPreview = null;
     updateGame();
   });
@@ -1747,12 +1901,18 @@ function frame(now) {
     roundTime = Math.min(ROUND(), roundTime + dt);
     if (roundTime === ROUND()) { game.finish(); updateGame(); }
   }
+  if (seismicSession && !paused) {
+    if (now >= seismicSession.endsAt) {
+      finalizeSeismicSession();
+    }
+  }
   tablePlay?.update(dt, external);
   const blobs = advance(paused ? 0 : dt * SPEEDS[speed]);
   draw(dt, blobs);
-  if (touchCtx && lidarTouch) {
+  if (touchCtx) {
     touchCtx.clearRect(0, 0, innerWidth, innerHeight);
-    lidarTouch.drawRipples(touchCtx);
+    if (lidarTouch) lidarTouch.drawRipples(touchCtx);
+    drawSeismicOverlay(touchCtx, now);
   }
   tellScreens(blobs, now);
   broadcastScene(now);

@@ -108,7 +108,7 @@ export class TrenchEffects {
       this.matrix.compose(this.position.set(p.x+p.vx*t,8+lift,p.z+p.vz*t),this.quaternion,this.scale.setScalar(p.size*fade));
       this.pieces.setMatrixAt(n,this.matrix); this.pieces.setColorAt(n++,this.color.set(p.color).multiplyScalar(.35+.65*fade));
     }
-    this.pieces.count=n; this.pieces.instanceMatrix.needsUpdate=true; if(this.pieces.instanceColor) this.pieces.instanceColor.needsUpdate=true;
+    this.pieces.count=n; this.pieces.visible=n>0; this.pieces.instanceMatrix.needsUpdate=true; if(this.pieces.instanceColor) this.pieces.instanceColor.needsUpdate=true;
     n=0; let cores=0,clouds=0; this.quaternion.identity();
     for(const p of this.blasts) {
       const t=now-p.start; if(t<0) continue;
@@ -130,7 +130,7 @@ export class TrenchEffects {
       this.dust.setMatrixAt(clouds,this.matrix); this.dust.setColorAt(clouds++,this.color.setScalar((1-t/2.6)**2));
     }
     for(const [mesh,count] of [[this.flashes,n],[this.fireballs,cores],[this.dust,clouds]]) {
-      mesh.count=count; mesh.instanceMatrix.needsUpdate=true; if(mesh.instanceColor) mesh.instanceColor.needsUpdate=true;
+      mesh.count=count; mesh.visible=count>0; mesh.instanceMatrix.needsUpdate=true; if(mesh.instanceColor) mesh.instanceColor.needsUpdate=true;
     }
     n=0; const points=game.barrierPreview||[];
     for(let i=1;i<points.length && n<200;i++) {
@@ -139,6 +139,6 @@ export class TrenchEffects {
       this.matrix.compose(this.position.set((a.x+b.x)/2,5,(a.z+b.z)/2),this.quaternion,this.scale.set(length+8,1,TRENCH_RADIUS*2));
       this.preview.setMatrixAt(n++,this.matrix);
     }
-    this.preview.count=n; this.preview.instanceMatrix.needsUpdate=true;
+    this.preview.count=n; this.preview.visible=n>0; this.preview.instanceMatrix.needsUpdate=true;
   }
 }
