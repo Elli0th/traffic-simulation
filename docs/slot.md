@@ -84,7 +84,7 @@ page: the laptop streams the finished pictures to the projector and both TVs. St
    left and right, with the game window in front; the nudge is remembered. (The lidar page and
    its nine circles are still what the traffic view uses.)
 
-3. **Play.** A tap (a touch of 0.1 to 1.2 seconds, then lifted) presses what is under it: the menu, the action buttons, the
+3. **Play.** A tap (a touch of up to three seconds, then lifted) presses what is under it: the menu, the action buttons, the
    power cards, Pause and Resume, End game. In a solo round the whole table is the one player's.
    The seismic trench takes two taps, its start and then its end (the mouse drags it).
    The left TV turns to the 3D city in a solo round and the right one follows the role.

@@ -4,7 +4,7 @@
 //
 // This is the virus-game branch's engine: the table's place in front of the lidar is a fixed box, so
 // there is nothing to calibrate (the [ ] { } keys nudge it by 10 mm), and a tap is a touch that comes
-// and goes within 80 ms to 1.2 s.
+// and goes within three seconds.
 
 import { decodeScan } from './scan.js';
 
@@ -42,6 +42,11 @@ export class LidarTouchController {
     };
     this.clusterRadius = options.clusterRadius || 80.0; // mm
     this.minPoints = options.minPoints || 2;
+    // How long a touch may last and still be a tap, and how long it may go unseen before it is over.
+    // (They were 1 second and 200 ms: a slow, deliberate press on the table was thrown away as too
+    // long, and one missed sweep too many cut a press in two.)
+    this.maxTap = options.maxTap || 3000; // ms
+    this.gap = options.gap || 350; // ms
     this.onTap = options.onTap || null; // (side, u, v, screenX, screenY) => void
     this.activeTouches = new Map(); // id -> { id, u, v, side, startTime, x, y }
     this.ws = null;
@@ -238,10 +243,11 @@ export class LidarTouchController {
         touch.side = normU < 0.5 ? 'spreader' : 'curber';
         liveTouchIds.add(id);
       } else {
-        // Did not match; if gone for > 200ms, mark as ended tap
-        if (now - touch.lastSeen > 200) {
+        // Did not match. The lidar sweeps ten times a second and a fingertip can miss a sweep or two,
+        // so it is only gone after this.gap; then it was a tap if it lasted no longer than this.maxTap.
+        if (now - touch.lastSeen > this.gap) {
           const duration = now - touch.startTime;
-          if (duration >= 80 && duration <= 1200) {
+          if (duration >= 80 && duration <= this.maxTap + this.gap) {
             this.handleTap(touch);
           }
           this.activeTouches.delete(id);
