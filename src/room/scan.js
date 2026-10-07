@@ -58,13 +58,13 @@ export class ScanDetector {
     this.recent = []; // the last few sweeps' things, to tell what stays from what flickers
   }
 
-  // The things that were also there in one of the two sweeps before: a finger, not a flicker. (Not
-  // both: a fingertip far from the lidar catches only a beam or two, and misses the odd sweep.)
+  // The things that were also there in two of the three sweeps before: a finger, not a flicker. (Not
+  // all three: a fingertip far from the lidar catches only a beam or two, and misses the odd sweep.)
   steady(blips) {
     const near = (list, b) => list.some((o) => Math.hypot(o.x - b.x, o.y - b.y) < 60);
-    const out = blips.filter((b) => this.recent.some((list) => near(list, b)));
+    const out = blips.filter((b) => this.recent.filter((list) => near(list, b)).length >= 2);
     this.recent.push(blips);
-    if (this.recent.length > 2) this.recent.shift();
+    if (this.recent.length > 3) this.recent.shift();
     return out;
   }
 
@@ -170,7 +170,8 @@ export class Gestures {
     this.match = 0.12; // how far a hand may jump between sweeps and still be the same hand
     this.settle = 1.0; // seconds without moving before a point counts as an object
     this.slack = 0.012; // movement smaller than this is noise
-    this.engage = 0.025; // a hand must travel this far before it starts to drag
+    this.engage = 0.03; // a hand must travel this far before it starts to drag
+    this.confirm = 5; // sweeps a point must have been followed for before it counts at all
     Object.assign(this, options);
     this.tracks = [];
     this.nextId = 1;
@@ -218,7 +219,7 @@ export class Gestures {
     }
     this.tracks = this.tracks.filter((t) => t.missed <= 3);
 
-    const live = this.tracks.filter((t) => !t.missed && t.seen >= 3);
+    const live = this.tracks.filter((t) => !t.missed && t.seen >= this.confirm);
     const objects = live.filter((t) => t.still).map((t) => ({ x: t.restX, y: t.restY }));
     const hands = live.filter((t) => !t.still && t.travel >= this.engage).sort((p, q) => p.id - q.id);
     const out = { pan: [0, 0], zoom: 1, at: [0.5, 0.5], hands: hands.length, objects };

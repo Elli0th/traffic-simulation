@@ -57,9 +57,9 @@ await sweeps([], 50);
 check('an empty table with a dent in it clicks nothing', () => assert.equal(taps.length, 0));
 
 fresh();
-await sweeps([{ x: 0.3, y: 0.6, r: 9 }], 4);
+await sweeps([{ x: 0.3, y: 0.6, r: 9 }], 7);
 await sweeps([], 5);
-check('a finger that touches and lifts is one tap, within 2.5% of where it touched', () => {
+check('a finger that touches for most of a second and lifts is one tap, within 2.5% of where it touched', () => {
   assert.equal(taps.length, 1);
   assert.ok(near(taps[0], 0.3, 0.6), `tapped at ${taps[0].u.toFixed(3)}, ${taps[0].v.toFixed(3)}`);
   assert.equal(taps[0].side, 'spreader');
@@ -71,11 +71,21 @@ await sweeps([], 6);
 check('a single stray reading is not a tap', () => assert.equal(taps.length, 0));
 
 fresh();
+await sweeps([{ x: 0.8, y: 0.4, r: 9 }], 3);
+await sweeps([], 6);
+check('something that brushes the table for a third of a second is not a tap', () => assert.equal(taps.length, 0));
+
+fresh();
+await sweeps((k) => (k % 2 ? [{ x: 0.4, y: 0.4, r: 9 }] : []), 30);
+await sweeps([], 6);
+check('something that flickers in and out clicks nothing', () => assert.equal(taps.length, 0));
+
+fresh();
 const started = clock;
 await sweeps([{ x: 0.75, y: 0.7, r: 9 }], 30);
-check('a finger held still clicks once, within a second, without lifting', () => {
+check('a finger held still clicks once, after about a second, without lifting', () => {
   assert.equal(taps.length, 1);
-  assert.ok(taps[0].at - started <= 1000, `clicked after ${taps[0].at - started} ms`);
+  assert.ok(taps[0].at - started >= 900 && taps[0].at - started <= 1600, `clicked after ${taps[0].at - started} ms`);
   assert.ok(near(taps[0], 0.75, 0.7));
   assert.equal(taps[0].side, 'curber');
 });
@@ -93,7 +103,7 @@ await sweeps([], 6);
 check('a hand or arm resting on the table clicks nothing', () => assert.equal(taps.length, 0));
 
 fresh();
-await sweeps([{ x: 0.3, y: 0.6, r: 9 }, { x: 0.7, y: 0.3, r: 9 }], 4);
+await sweeps([{ x: 0.3, y: 0.6, r: 9 }, { x: 0.7, y: 0.3, r: 9 }], 7);
 await sweeps([], 5);
 check('two players tapping at once are two taps, one on each side', () => {
   assert.equal(taps.length, 2);

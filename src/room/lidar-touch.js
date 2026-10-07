@@ -7,11 +7,15 @@ import { applyHomography } from './homography.js';
 
 const MAP_KEY = 'lidar_to_table';
 const EMPTY_KEY = 'lidar_empty_table';
-const DWELL = 0.6; // seconds a finger or a piece stays put before that counts as a click
+// How sure the table must be before it acts. The lidar sees anything that crosses its plane, sleeves
+// and passing arms included, so a click has to be confirmed by staying there.
+const DWELL = 0.9; // seconds a finger or a piece stays put before that counts as a click (?hold=)
+const TAP_SIGHTINGS = 3; // sweeps a tap must be seen in, after the three it takes to be noticed: half a second of touch
+const TAP_WIDTH = 160; // millimetres: a tap is a finger or a hand, not a forearm
 const DWELL_WIDTH = 70; // millimetres: wider than this is a hand or an arm resting, which clicks nothing
 const DWELL_SLACK = 25; // millimetres it may wander while staying put
 const GONE = 300; // milliseconds unseen before a touch has lifted
-const TAP_SLACK = 80; // millimetres a tap may slide between touching and lifting
+const TAP_SLACK = 50; // millimetres a tap may slide between touching and lifting
 
 export class LidarTouchController {
   constructor(options = {}) {
@@ -56,6 +60,7 @@ export class LidarTouchController {
     // what is over the table, so dents and edges it has learned are not mistaken for fingers.
     this.detector = null;
     this.dwell = options.dwell ?? (urlParams?.get('dwell') !== '0');
+    this.hold = Number(options.hold ?? urlParams?.get('hold')) || DWELL;
     try {
       const kept = JSON.parse((typeof localStorage !== 'undefined' && localStorage.getItem(EMPTY_KEY)) || 'null');
       if (kept) this.setEmptyTable(kept.background, kept.margin);
@@ -314,7 +319,9 @@ export class LidarTouchController {
         touch.width = Math.max(touch.width, c.width ?? Infinity);
         this.aim(touch, c.x, c.y);
         // Held still for a moment: a click, there and then. Lifting it afterwards is not another.
-        if (this.dwell && !touch.clicked && this.dwelling(touch) && now - touch.startTime >= DWELL * 1000) {
+        // (And seen in most of the sweeps since it came down: something that comes and goes is not held.)
+        const held = now - touch.startTime;
+        if (this.dwell && !touch.clicked && this.dwelling(touch) && held >= this.hold * 1000 && touch.sightings >= held / 100 * 0.7) {
           touch.clicked = true;
           this.aim(touch, touch.sumX / touch.sightings, touch.sumY / touch.sightings);
           this.handleTap(touch);
@@ -323,7 +330,7 @@ export class LidarTouchController {
         // Gone: a tap if it touched briefly and lifted where it came down. A single stray reading, or
         // an arm sweeping across, is not one.
         const duration = touch.lastSeen - touch.startTime;
-        if (!touch.clicked && touch.sightings >= (steadied ? 1 : 3) && duration <= 1000 && touch.travel <= TAP_SLACK) {
+        if (!touch.clicked && touch.sightings >= (steadied ? TAP_SIGHTINGS : 5) && duration <= 1000 && touch.travel <= TAP_SLACK && (touch.width <= TAP_WIDTH || !steadied)) {
           // Where it was on average: the last sighting, as the hand lifts, is the least reliable.
           this.aim(touch, touch.sumX / touch.sightings, touch.sumY / touch.sightings);
           this.handleTap(touch);
@@ -427,9 +434,9 @@ export class LidarTouchController {
       ctx.stroke();
       // A ring that fills while a finger is held still, and closes as it clicks.
       if (this.dwell && this.dwelling(touch)) {
-        const held = touch.clicked ? 1 : Math.min(1, (performance.now() - touch.startTime) / (DWELL * 1000));
+        const filled = touch.clicked ? 1 : Math.min(1, (performance.now() - touch.startTime) / (this.hold * 1000));
         ctx.beginPath();
-        ctx.arc(sx, sy, 26, -Math.PI / 2, -Math.PI / 2 + held * Math.PI * 2);
+        ctx.arc(sx, sy, 26, -Math.PI / 2, -Math.PI / 2 + filled * Math.PI * 2);
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 4;
         ctx.globalAlpha = touch.clicked ? 0.35 : 0.9;
