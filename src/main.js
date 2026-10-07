@@ -1456,8 +1456,10 @@ function cachedMap(side, r) {
   const v = gameViews[side];
   const key = `${r.width}/${r.height}/${v.x}/${v.z}/${v.zoom}`;
   if (v.cacheKey === key) return v.mapCache.texture;
-  if (!v.mapCache) v.mapCache = new THREE.WebGLRenderTarget(r.width, r.height, { depthBuffer: true });
-  else v.mapCache.setSize(r.width, r.height);
+  const pixels = renderer.getPixelRatio();
+  const width = Math.round(r.width * pixels), height = Math.round(r.height * pixels);
+  if (!v.mapCache) v.mapCache = new THREE.WebGLRenderTarget(width, height, { depthBuffer: true });
+  else v.mapCache.setSize(width, height);
   cityGround.visible = true; cityBuildings.visible = true;
   for (const label of labels) label.visible = true;
   walkers.visible = false;
@@ -1547,7 +1549,8 @@ function draw(dt, blobs) {
     drawPlan(); drawRoute(sim.time); drawOverlays(blobs, sim.time);
   }
   if (game) {
-    gameFrameTarget.setSize(innerWidth, innerHeight);
+    const pixels = renderer.getPixelRatio();
+    gameFrameTarget.setSize(Math.round(innerWidth * pixels), Math.round(innerHeight * pixels));
     renderer.setRenderTarget(gameFrameTarget);
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, innerWidth, innerHeight);

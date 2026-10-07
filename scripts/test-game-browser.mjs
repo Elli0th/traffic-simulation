@@ -1,6 +1,6 @@
 // Optional smoke check: start a Chromium browser with --remote-debugging-port=9224 first.
 import assert from 'node:assert/strict';
-import { gameRect } from '../src/game-view.js';
+import { gameRect, controlWidth, GAME_LOG } from '../src/game-view.js';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -100,7 +100,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   const layout = await evaluate('({ map:document.querySelector("[data-map=spreader]").getBoundingClientRect().width, feed:document.getElementById("g-feed").getBoundingClientRect().width, curber:getComputedStyle(document.querySelector("[data-player=curber]")).display })');
-  assert.equal(layout.map, 944);
+  assert.ok(Math.abs(layout.map - (1440 - controlWidth(1440) - GAME_LOG)) < 1);
   assert.equal(layout.feed, 280);
   assert.equal(layout.curber, 'none');
   assert.equal(await evaluate('window.table.game.winner'), undefined);

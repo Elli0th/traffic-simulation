@@ -8,7 +8,7 @@ let single = false;
 export const setSinglePlayer = (on) => { single = on; };
 export const isSinglePlayer = () => single;
 export const activeSides = () => (single ? ['spreader'] : SIDES);
-export function controlWidth(width) { return Math.max(180, Math.min(240, width * 0.15)); }
+export function controlWidth(width) { return Math.max(220, Math.min(260, width * 0.16)); }
 export function gameRect(side, width, height) {
   const rail = controlWidth(width), half = Math.floor(width / 2);
   return { x: side === 'spreader' ? rail : half, y: GAME_HEADER,

@@ -357,7 +357,7 @@
       #game .player-panel { position:absolute; top:112px; bottom:0; width:var(--control-width); height:auto; box-sizing:border-box; padding:8px 12px; background:#101720; border-top:1px solid #33404e; pointer-events:auto; overflow:auto; }
       [data-player="spreader"] { left:0; border-right:2px solid #33404e; }
       [data-player="curber"] { right:0; }
-      body.game { --control-width:clamp(180px,15vw,240px); }
+      body.game { --control-width:clamp(220px,16vw,260px); }
       body.game::after { content:''; position:fixed; left:calc(50% - 1px); top:112px; bottom:0; width:2px; background:#33404e; pointer-events:none; z-index:9; }
       .player-top { display:flex; flex-direction:column; align-items:stretch; gap:8px; }
       #game .player-top h3 { margin:0; }
@@ -372,6 +372,9 @@
       #game .tools { grid-template-columns:1fr; gap:8px; }
       #game .tools button { font-size:16px; padding:10px; min-height:68px; }
       #game .tools small { font-size:12px; }
+      #game .tools button { line-height:1.25; }
+      #game .tools small { margin-top:5px; line-height:1.3; }
+      #game .player-panel { scrollbar-width:thin; scrollbar-color:#536575 #101720; }
       #game [id^="g-toast-"] { min-height:14px; margin:4px 0; color:#ffc233; font-size:11px; }
       .pane-help { margin:4px 0; color:#8a98a8; font-size:10px; }
       #game #g-chart { display:none; }
@@ -484,11 +487,11 @@
         <div class="player-top"><h3>Spreader</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in spreader">+</button><button data-zoom="1.25" aria-label="Zoom out spreader">-</button><button data-zoom="fit">Whole map</button></div></div>
         <div class="private-controls"><div class="action-controls"><h3>Action points <b id="g-sp">0</b></h3>
         <div class="tools">
-        <button data-act="party">Start a party (10 pax)<small>Q | 10m | click map | <span data-cost></span></small></button>
-        <button data-act="antimask">Antimask conspiracy<small>W | +40% transmission | 5m delay | <span data-cost></span></small></button>
-        <button data-act="antivaxx">Antivaxx conspiracy<small>E | lower uptake | 5m delay | <span data-cost></span></small></button>
-        <button data-act="sickwork">Send someone sick to work<small>R | 15m | click near a case | <span data-cost></span></small></button>
-        <button data-act="fakenews">Spread fake news<small>A | +20% contact transmission; less isolation | 3m delay | <span data-cost></span></small><small>Harmful false claim: drinking bleach cures illness. It does not.</small></button>
+        <button data-act="party">Start a party (10 pax)<small>Q | 10 people | Click map | <span data-cost></span></small></button>
+        <button data-act="antimask">Antimask conspiracy<small>W | +40% spread | <span data-cost></span></small></button>
+        <button data-act="antivaxx">Antivaxx conspiracy<small>E | Lower vaccine uptake | <span data-cost></span></small></button>
+        <button data-act="sickwork">Send someone sick to work<small>R | Click an infectious person | <span data-cost></span></small></button>
+        <button data-act="fakenews" title="Harmful misinformation falsely claims drinking bleach cures illness. It does not.">Spread fake news<small>A | +20% spread, less isolation | <span data-cost></span></small><small>Dangerous false cures give no protection.</small></button>
         </div><p id="g-toast-spreader"></p></div><aside class="action-history"><h3>My actions &amp; effects <small>Click a location to zoom to it</small></h3><div id="g-effects-spreader" class="effect-list"></div></aside></div>
         <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
       </section>
@@ -496,12 +499,12 @@
         <div class="player-top"><h3>Curber</h3><div class="zoom-tools"><button data-zoom="0.8" aria-label="Zoom in curber">+</button><button data-zoom="1.25" aria-label="Zoom out curber">-</button><button data-zoom="fit">Whole map</button></div></div>
         <div class="private-controls"><div class="action-controls"><h3>Action points <b id="g-cp">0</b></h3>
         <div class="tools">
-        <button data-act="lockdown">Lockdown<small>I | 30m | click map | <span data-cost></span></small></button>
-        <button data-act="vaccines">Free vaccines<small>O | 2m rollout | 5m protection | <span data-cost></span></small></button>
-        <button data-act="distancing">Social distancing<small>P | -45% transmission | 1m delay | <span data-cost></span></small></button>
-        <button data-act="hospitals">New hospitals<small>L | 10m build | isolate cases | <span data-cost></span></small></button>
-        <button data-act="newvaccine">New vaccine<small>K | 20m research | 90% protection | <span data-cost></span></small></button>
-        <button data-act="education">Health education<small>J | Monitor health, seek care and isolate | -20% contact transmission | 2m delay | <span data-cost></span></small></button>
+        <button data-act="lockdown">Lockdown<small>I | Click map | <span data-cost></span></small></button>
+        <button data-act="vaccines">Free vaccines<small>O | Vaccine rollout | <span data-cost></span></small></button>
+        <button data-act="distancing">Social distancing<small>P | -45% spread | <span data-cost></span></small></button>
+        <button data-act="hospitals">New hospitals<small>L | More isolation capacity | <span data-cost></span></small></button>
+        <button data-act="newvaccine">New vaccine<small>K | Stronger vaccine | <span data-cost></span></small></button>
+        <button data-act="education">Health education<small>J | -20% spread, earlier isolation | <span data-cost></span></small></button>
         </div><p id="g-toast-curber"></p></div><aside class="action-history"><h3>My actions &amp; effects <small>Click a location to zoom to it</small></h3><div id="g-effects-curber" class="effect-list"></div></aside></div>
         <p class="pane-help">Scroll to zoom | Right-drag to pan | Choose an action, then click your map</p>
       </section>
