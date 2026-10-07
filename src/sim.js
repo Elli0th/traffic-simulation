@@ -646,6 +646,7 @@ export class Sim {
     e.cars.push(car);
     this.cars.push(car);
     this.stats.started++;
+    this.onLaunch?.(car, from); // for whoever wants to know who is on the road (the outbreak game)
     return car;
   }
 
@@ -976,6 +977,7 @@ export class Sim {
 
   arrive(c) {
     this.stats.arrived++;
+    this.onArrive?.(c);
     this.stats.tripTime += this.time - c.born;
   }
 

@@ -13,25 +13,15 @@
 // Whose piece it is follows from which half of the table it stands on. An object has to sit still
 // for a second before it counts, so an arm reaching across the map does nothing.
 //
-// Open the table with ?game=table. The screens (?game&view=screen) show the public numbers.
+// Open the table with ?game=table. The screens (?game&view=screen) show the dashboard (virus-board.js).
 
-import * as THREE from 'three';
 import { sideAt } from './game-view.js';
+import { startBoard, boardState } from './virus-board.js';
 
 const HOLD = 1; // seconds a hand must stay on a button, or a piece on the map
 const SAME = 0.03; // a piece that has moved less than this share of the picture is still the same piece
 const RETRY = 1; // seconds between tries for a piece that could not be played yet
 const DEFAULT = { spreader: 'party', curber: 'lockdown' }; // what a piece does when nothing is chosen
-
-const CSS = `
-  #vt-board { position: fixed; inset: 0 0 auto; padding: 14px 24px; background: #101720; font-size: 2.2vh; }
-  #vt-board h2 { display: flex; justify-content: space-between; margin: 0 0 6px; font-size: 2.2vh; letter-spacing: 0.14em; text-transform: uppercase; color: #9aa4b2; }
-  #vt-board .totals { display: flex; gap: 4vw; }
-  #vt-board .totals b { margin-left: 1vw; font-size: 4.4vh; font-variant-numeric: tabular-nums; }
-  #vt-board .totals span:first-child b { color: #ff4545; }
-  #vt-board .totals span:last-child b { color: #50dda5; }
-  #vt-board p { margin: 6px 0 0; color: #cfd6e0; }
-`;
 
 // `room` is what the table page gives this to work with:
 //   game      the Outbreak, or null in a window that only follows (a screen)
@@ -40,37 +30,17 @@ const CSS = `
 //   act       does one of a player's actions, as their button or a click on their map would
 //   armed     the action a player has chosen that is waiting for its place on the map, if any
 //   pick      turns a point of the window into metres on that player's map
-//   relay, pool, putBox
+//   size      the map's width and depth in metres
+//   relay
 export function startTablePlay(room) {
   const { game, follower, onTable, relay, act, armed, pick } = room;
   const text = (id) => document.getElementById(id).textContent;
 
-  // ----- the screens: the numbers everyone may see, and the glowing squares where the virus is -----
+  // ----- the screens: a dashboard of the numbers everyone may see -----
 
   if (follower) {
-    document.head.appendChild(Object.assign(document.createElement('style'), { textContent: CSS }));
     document.body.classList.add('nohud');
-    document.body.insertAdjacentHTML(
-      'beforeend',
-      '<div id="vt-board"><h2>Outbreak <span data-time></span></h2><div class="totals"><span>Infected <b data-infected>0</b></span><span>Non-infected <b data-noninfected>0</b></span></div><p data-status></p></div>',
-    );
-    const board = document.getElementById('vt-board');
-    const squares = room.pool(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, depthTest: false }), 3000, 1);
-    const tint = new THREE.Color();
-    relay.on('virus', (v) => {
-      board.querySelector('[data-time]').textContent = v.time;
-      board.querySelector('[data-infected]').textContent = v.infected;
-      board.querySelector('[data-noninfected]').textContent = v.noninfected;
-      board.querySelector('[data-status]').textContent = v.over ? `${v.over.win} ${v.over.sum}` : v.status;
-      let n = 0;
-      for (let k = 0; k < v.heat.length && n < 3000; k += 3) {
-        const s = Math.min(1, v.heat[k + 2] / 5);
-        room.putBox(squares, n++, v.heat[k], 0.9, v.heat[k + 1], 1, 0, 96, 0.4, 96, tint.setRGB(1, 0.65 * (1 - s), 0.1 * (1 - s)));
-      }
-      squares.count = n;
-      squares.instanceMatrix.needsUpdate = true;
-      if (squares.instanceColor) squares.instanceColor.needsUpdate = true;
-    });
+    startBoard(relay, room.size);
     return { pieces: false, update() {} };
   }
 
@@ -162,9 +132,8 @@ export function startTablePlay(room) {
       for (const c of game.heat(100)) heat.push(Math.round(c.x), Math.round(c.z), c.n);
       relay.send('virus', {
         time: text('g-time'),
-        infected: text('g-infected'),
-        noninfected: text('g-noninfected'),
         status: text('g-status'),
+        stats: boardState(game),
         over: game.phase === 'over' ? { win: text('g-win'), sum: text('g-sum') } : null,
         heat,
       });

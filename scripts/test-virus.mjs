@@ -109,7 +109,8 @@ check('a lockdown and vaccination slow it', () => {
   assert.ok(held.ever < free.ever, `${held.ever} vs ${free.ever}`);
 });
 
-function fixture(n = 20) {
+// Enough people that the ten at a party stay under the share of the city that ends the round.
+function fixture(n = 60) {
   const agents = Array.from({ length: n }, (_, k) => ({ x: k, z: 0, out: true, threshold: 0.5 }));
   const game = new Outbreak({ agents }, { seed: 7 });
   game.phase = 'running';

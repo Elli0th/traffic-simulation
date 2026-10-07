@@ -58,6 +58,13 @@ use simulated time. This is an accelerated fictional game model, not a predictio
 
 Scale and realism: a round stands for 60 days (30× speed). Each simulated person stands for about 290 of Göteborg's 600,000 people, and the virus follows the original COVID-19 strain: 3 days until infectious, 8 days infectious, R0 of about 2.5, 5% needing a hospital bed, 0.7% dying. Counts are shown in real people. People live around homes and workplaces, so dense districts are crowded and risk there is scaled by how built-up the area is. Trams and buses carry the virus: people waiting at a stop mix with the passengers, so an infectious rider takes it to the next stop (infected vehicles turn red).
 
+**Who wins.** The Spreader wins the moment 30% of the city has caught the virus, or the
+government's approval reaches zero. The Curber wins by holding out until the three minutes are up, or
+by stamping the outbreak out. Both numbers are in the top bar. Approval only goes down: each lockdown
+in force costs 1.1 points a game day and social distancing 0.9, so a 20-day lockdown costs 22 of the
+100. Cars carry the virus too: a driver who sets off from among infectious people may infect one or
+two where the trip ends (the car turns red), which is how it jumps across the city.
+
 | Player / key | Action | Delay | Effect / duration |
 | --- | --- | --- | --- |
 | Spreader Q + click | Start a party (10 pax) | Immediate | Ten nearest people within 300m; extra group contacts for 10m |
@@ -91,8 +98,9 @@ the buttons and click the maps. The players sit side by side, the Spreader at th
 Whose piece it is follows from which half of the table it stands on. A piece counts once it has
 stood still for a second, so an arm reaching over the map does nothing; one that cannot be played
 yet (points, cooldown) is played as soon as it can be; lift it and put it down to play again.
-Dragging and zooming the map with the lidar is switched off. The screens show the shared totals and
-where the virus is, not either player's private panel. To rehearse without the room, use the camera
+Dragging and zooming the map with the lidar is switched off. The screens show a dashboard instead of
+the map: the clock, the shared totals, how close each side is to winning, the curve of cases and a
+grid of where the virus is, not either player's private panel. To rehearse without the room, use the camera
 page's pretend table.
 
 ## Planning a change
@@ -138,7 +146,7 @@ address it prints (for example `http://192.168.0.117:5173`). Other machines use 
 | Window | Address | Where |
 | --- | --- | --- |
 | Table | `/` | The projector. Fullscreen (`F`), panel hidden (`H`). Only one of these. |
-| Screens | `/?view=screen` | The TVs. They follow the table: same objects, clock and area, in 3D. |
+| Screens | `/?view=screen` | The TVs. They follow the table: same objects, clock and area, in 3D. During the game they show its dashboard instead. |
 | Camera | `/camera.html` | Your laptop. Keep this window visible; browsers slow down hidden pages. |
 | Lidar | `/lidar.html` | Your laptop, also visible. Turns hands over the table into map movements. |
 
