@@ -39,7 +39,7 @@ async function call(name, path, body, base = DISPLAYS[name]) {
       method: body ? 'POST' : 'GET',
       headers: body && { 'Content-Type': 'application/json' },
       body: body && JSON.stringify(body),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(body ? 20000 : 5000), // the projector takes its time to answer a change of page
     });
     console.log(`${name.padEnd(10)}${response.status}  ${(await response.text()).slice(0, 200)}`);
   } catch (error) {
