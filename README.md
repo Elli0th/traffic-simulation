@@ -56,6 +56,8 @@ Click a busy street to place four initial exposed people for free.
 The round runs three real minutes; at 30? that is 90 simulated minutes. All action timings below
 use simulated time. This is an accelerated fictional game model, not a prediction for any disease.
 
+Scale and realism: a round stands for 60 days (30× speed). Each simulated person stands for about 290 of Göteborg's 600,000 people, and the virus follows the original COVID-19 strain: 3 days until infectious, 8 days infectious, R0 of about 2.5, 5% needing a hospital bed, 0.7% dying. Counts are shown in real people. People live around homes and workplaces, so dense districts are crowded and risk there is scaled by how built-up the area is. Trams and buses carry the virus: people waiting at a stop mix with the passengers, so an infectious rider takes it to the next stop (infected vehicles turn red).
+
 | Player / key | Action | Delay | Effect / duration |
 | --- | --- | --- | --- |
 | Spreader Q + click | Start a party (10 pax) | Immediate | Ten nearest people within 300m; extra group contacts for 10m |

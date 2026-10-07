@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Sim } from '../src/sim.js';
 import { People } from '../src/people.js';
+import { Trams } from '../src/transit.js';
 import { Outbreak, S, I, R } from '../src/virus.js';
 
 const map = JSON.parse(readFileSync(new URL('../public/gbg.json', import.meta.url)));
@@ -19,13 +20,17 @@ const check = (name, fn) => {
 
 function world(seedValue = 5) {
   const sim = new Sim(map, { clock: 8 * 3600 });
+  const anchors = [...sim.homes, ...sim.works].map((i) => [sim.nodes[i].x, sim.nodes[i].z]);
   const people = new People(map.paths, sim, {
     walkers: Math.round(map.paths.edges.length * 0.072),
     cyclists: Math.round(map.paths.edges.length * 0.0105),
+    anchors,
   });
-  const game = new Outbreak(people, { seed: seedValue });
+  const trams = new Trams(map.tramLines, sim);
+  const game = new Outbreak(people, { seed: seedValue, sim, trams });
   const step = (dt) => {
     sim.step(dt);
+    trams.step(dt);
     people.step(dt);
     game.step(dt);
   };
@@ -56,10 +61,10 @@ function run(hours, act) {
   const rows = [];
   for (let t = 0; t < hours * 3600; t += 1) {
     w.step(1);
-    if (t % 900 === 0) rows.push(`${(t / 3600).toFixed(1)}h ${Math.round(w.game.counts().share * 1000) / 10}%`);
+    if (t % 5400 === 0 || t % 450 === 0) rows.push(`${Math.round(t / 90)}d ${Math.round(w.game.counts().share * 1000) / 10}%`);
     
   }
-  return { ...w.game.counts(), phase: w.game.phase, rows, t: w.game.time };
+  return { ...w.game.counts(), transit: w.game.fromTransit, phase: w.game.phase, rows, t: w.game.time };
 }
 
 check('nothing spreads before the first seed', () => {
@@ -74,6 +79,24 @@ check('an unchecked outbreak spreads', () => {
   free = run(1.5);
   console.log('   ', free.rows.join('  '));
   assert.ok(free.ever > 20, `only ${free.ever} caught it`);
+});
+
+check('crowded districts and transit matter', () => {
+  const w = world();
+  assert.ok(w.game.density.size > 20, 'density map built');
+  const dense = Math.max(...w.game.density.values());
+  assert.ok(dense > 1.5 && dense <= 2.5, `densest square ${dense}`);
+  // People gather around homes and workplaces, not evenly: some squares hold far more than the average.
+  const cells = new Map();
+  for (const p of w.people.agents) {
+    const k = Math.floor(p.x / 150) * 9973 + Math.floor(p.z / 150);
+    cells.set(k, (cells.get(k) || 0) + 1);
+  }
+  const counts = [...cells.values()];
+  const mean = counts.reduce((a, b) => a + b, 0) / counts.length;
+  assert.ok(Math.max(...counts) > 3 * mean, `max ${Math.max(...counts)} vs mean ${mean.toFixed(1)}`);
+  assert.ok(free.transit > 0, 'some cases came from trams and buses');
+  console.log('    transit cases', free.transit, 'of', free.ever);
 });
 
 check('a lockdown and vaccination slow it', () => {
