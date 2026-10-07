@@ -4,7 +4,7 @@ import { recorder } from './scripts/recorder.mjs';
 
 // Passes messages between every window that has the app open (see src/room/relay.js), so the camera
 // page on the laptop can tell the table and the screens what is on the table.
-const MESSAGES = ['blobs', 'world', 'state', 'calibrate', 'hello', 'who', 'gesture', 'edits', 'ink', 'virus', 'game_sync', 'action', 'lights', 'lidar-map', 'touches'];
+const MESSAGES = ['blobs', 'world', 'state', 'calibrate', 'hello', 'who', 'gesture', 'edits', 'ink', 'virus', 'game_sync', 'game_scene', 'scene_request', 'action', 'lights', 'lidar-map', 'touches'];
 const relay = () => ({
   name: 'room-relay',
   configureServer(server) {
@@ -82,6 +82,6 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    rollupOptions: { input: ['index.html', 'camera.html', 'lidar.html', 'grid.html', 'draw.html', 'dashboard.html', 'stream.html', 'check.html'] },
+    rollupOptions: { input: ['index.html', 'camera.html', 'lidar.html', 'grid.html', 'draw.html', 'dashboard.html', 'stream.html', 'check.html', 'tv-map.html'] },
   },
 }));

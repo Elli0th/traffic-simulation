@@ -1,6 +1,6 @@
 // Optional smoke check: start a Chromium browser with --remote-debugging-port=9224 first.
 import assert from 'node:assert/strict';
-import { gameRect } from '../src/game-view.js';
+import { gameRect, controlWidth, soloLayout } from '../src/game-view.js';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -100,10 +100,20 @@ try {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   const layout = await evaluate('({ map:document.querySelector("[data-map=spreader]").getBoundingClientRect().width, feed:document.getElementById("g-feed").getBoundingClientRect().width, curber:getComputedStyle(document.querySelector("[data-player=curber]")).display })');
-  assert.equal(layout.map, 944);
-  assert.equal(layout.feed, 280);
+  assert.ok(Math.abs(layout.map - soloLayout(1440,900).width) < 1);
+  assert.equal(layout.feed, soloLayout(1440,900).right);
   assert.equal(layout.curber, 'none');
   assert.equal(await evaluate('window.table.game.winner'), undefined);
   assert.deepEqual(errors, []);
   console.log('Updated single-player menu and layout passed with no winner field.');
+  await command('Page.navigate', { url: 'http://localhost:5173/?game&players=1&role=curber' });
+  for (let attempt = 0; attempt < 120; attempt++) {
+    if (await evaluate('window.table?.game?.soloRole === "curber" && !document.getElementById("loading")')) break;
+    if (attempt === 119) throw Error('Curber solo game did not load');
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-player=curber]")).display'), 'block');
+  assert.ok(await evaluate('document.querySelector("[data-map=curber]").getBoundingClientRect().width > 800'));
+  assert.deepEqual(errors, []);
+  console.log('New Curber solo role loads with its controls and centered map.');
 } finally { await command('Browser.close').catch(() => {}); ws.close(); }

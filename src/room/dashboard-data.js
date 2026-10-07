@@ -3,6 +3,7 @@
 // - Spreader sees the TRUE biological ground truth (including asymptomatic stealth carriers).
 // - Curber sees CONFIRMED / SYMPTOMATIC cases only, plus healthcare load.
 
+import { roundDuration } from '../game-runtime.js';
 import { ACTIONS, DAY, POPULATION, HOSPITAL } from '../virus.js';
 
 // Gothenburg district centroids for translating (x, z) coordinates into human-readable locations
@@ -31,19 +32,23 @@ export function resolveDistrict(x, z) {
   return best.name;
 }
 
-export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
+export function buildDashboardPayload(game, actionHistory = [], roundTime = 0, {paused=false,selectionPending=false} = {}) {
   if (!game) return null;
 
   const counts = game.counts();
   const total = Math.max(1, game.total);
   const scale = game.scale || POPULATION / total;
   const gameTime = game.time;
-  const day = Math.min(60, Math.floor(gameTime / DAY) + 1);
-  const timeLeft = Math.max(0, 180 - roundTime);
+  const maxDays=game.soloRole?40:60;
+  const day = Math.min(maxDays, Math.floor(gameTime / DAY) + 1);
+  const timeLeft = selectionPending ? null : Math.max(0, roundDuration(!!game.soloRole) - roundTime);
 
   // 1. Resolve Last Actions
-  const spreaderActions = actionHistory.filter((a) => a.side === 'spreader');
-  const curberActions = actionHistory.filter((a) => a.side === 'curber');
+  const history = [...actionHistory];
+  for (const e of game.actionLog || []) if (!history.some(a => a.name===e.kind && a.gameTime===e.placed)) history.push({name:e.kind,side:ACTIONS[e.kind]?.side,gameTime:e.placed,duration:e.until===Infinity?Infinity:e.until-e.start,x:e.x,z:e.z,label:ACTIONS[e.kind]?.label});
+  history.sort((a,b)=>a.gameTime-b.gameTime);
+  const spreaderActions = history.filter((a) => a.side === 'spreader');
+  const curberActions = history.filter((a) => a.side === 'curber');
 
   const formatAction = (a) => {
     if (!a) return { label: 'None yet', timeAgo: '-', status: 'Idle', target: 'None' };
@@ -95,15 +100,17 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
 
   const transitCases = Math.round((game.fromTransit || 0) * scale);
 
-  const spreaderDeck = ['party', 'antimask', 'antivaxx', 'sickwork', 'fakenews'].map((k) => {
-    const act = ACTIONS[k];
+  const spreaderDeck = ['party', 'antimask', 'antivaxx', 'sickwork', 'fakenews', ...(game.soloRole==='spreader'?['relocate','festival','blackout','mutation']:[])].map((k) => {
+    const act = game.action?.(k) || ACTIONS[k];
     const readyAt = game.ready[k] || 0;
     const cooldown = Math.max(0, readyAt - gameTime);
     return {
       key: k,
       label: act.label,
       cost: act.cost,
-      cooldownSec: cooldown,
+      cooldownSec: cooldown === Infinity ? null : cooldown / (game.soloRole?30:1),
+      built: cooldown === Infinity,
+      unlocked: game.unlocked?.(k) ?? true,
       ready: cooldown <= 0,
       affordable: game.points.spreader >= act.cost,
       available: game.available(k),
@@ -135,15 +142,17 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
       };
     });
 
-  const curberDeck = ['lockdown', 'vaccines', 'distancing', 'hospitals', 'newvaccine', 'education'].map((k) => {
-    const act = ACTIONS[k];
+  const curberDeck = ['lockdown', 'vaccines', 'distancing', 'hospitals', 'newvaccine', 'education', ...(game.soloRole==='curber'?['clinic','tracing','barrier']:[])].map((k) => {
+    const act = game.action?.(k) || ACTIONS[k];
     const readyAt = game.ready[k] || 0;
     const cooldown = Math.max(0, readyAt - gameTime);
     return {
       key: k,
       label: act.label,
       cost: act.cost,
-      cooldownSec: cooldown,
+      cooldownSec: cooldown === Infinity ? null : cooldown / (game.soloRole?30:1),
+      built: cooldown === Infinity,
+      unlocked: game.unlocked?.(k) ?? true,
       ready: cooldown <= 0,
       affordable: game.points.curber >= act.cost,
       available: game.available(k),
@@ -153,6 +162,12 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
   const vaccineUptakeNormal = !game.effects.some((e) => e.kind === 'antivaxx' && e.until > gameTime);
 
   return {
+    role:game.soloRole||null,
+    mode:selectionPending?'menu':game.soloRole?'solo':'multiplayer',
+    roundDuration:roundDuration(!!game.soloRole),
+    paused:paused || game.phase==='over',
+    score:game.soloRole==='curber'?1-counts.share:counts.share,
+    maxDays,
     gameTime,
     day,
     timeLeft,
@@ -188,8 +203,8 @@ export function buildDashboardPayload(game, actionHistory = [], roundTime = 0) {
       hospitalized,
       hospitalCapacity,
       hospitalStress,
-      vaccinatedCount: counts.people.immune,
-      vaccinatedPct: Math.round((counts.r / total) * 100),
+      vaccinatedCount: Math.round(game.agents.filter(p=>p.vac).length*scale),
+      vaccinatedPct: Math.round(game.agents.filter(p=>p.vac).length / total * 100),
       vaccineEfficacy: Math.round((game.vaccineEfficacy || 0.65) * 100),
       vaccineUptakeStatus: vaccineUptakeNormal ? '85% (Normal)' : '25% (Suppressed by Disinformation!)',
       activeLockdowns: activeLockdowns.length,

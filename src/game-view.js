@@ -2,23 +2,30 @@
 export const GAME_HEADER = 112;
 export const GAME_CONTROLS = 0;
 export const SIDES = ['spreader', 'curber'];
-// In the one-player game there is one map, the Spreader's, across the whole width.
-export const GAME_LOG = 280; // width of the notification column beside the map in the one-player game
+// Solo roles share one centered map between controls and power cards.
+export const GAME_LOG = 340; // width of the notification column beside the map in the one-player game
 let single = false;
-export const setSinglePlayer = (on) => { single = on; };
+let soloSide = 'spreader';
+export const setSinglePlayer = (on, role = 'spreader') => { single = on; soloSide = role; };
 export const isSinglePlayer = () => single;
-export const activeSides = () => (single ? ['spreader'] : SIDES);
-export function controlWidth(width) { return Math.max(180, Math.min(240, width * 0.15)); }
-export function gameRect(side, width, height) {
-  const rail = controlWidth(width), half = Math.floor(width / 2);
-  return { x: side === 'spreader' ? rail : half, y: GAME_HEADER,
-    width: single ? Math.max(1, width - rail - GAME_LOG) : Math.max(1, (side === 'spreader' ? half : width - half) - rail),
-    height: Math.max(1, height - GAME_HEADER) };
+export const activeSides = () => (single ? [soloSide] : SIDES);
+export function soloLayout(width, height) {
+  const wide = width >= 960; // a laptop window keeps the side rails; narrower gets the bottom panel
+  const left = wide ? Math.min(300, Math.max(260, width * 0.2)) : 0;
+  const right = wide ? left : Math.min(320, width * 0.3);
+  const bottom = wide ? 0 : 260;
+  return { left, right, bottom, x:left, y:GAME_HEADER, width:Math.max(1,width-left-right), height:Math.max(1,height-GAME_HEADER-bottom) };
 }
-export function sideAt(x, y, width, height) {
-  for (const side of activeSides()) {
-    const r = gameRect(side, width, height);
-    if (x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height) return side;
+export function controlWidth(width) { return Math.max(220, Math.min(260, width * 0.16)); }
+export function gameRect(side,width,height) {
+  if(single)return soloLayout(width,height);
+  const rail=controlWidth(width),half=Math.floor(width/2);
+  return {x:side==='spreader'?rail:half,y:GAME_HEADER,width:Math.max(1,(side==='spreader'?half:width-half)-rail),height:Math.max(1,height-GAME_HEADER)};
+}
+export function sideAt(x,y,width,height) {
+  for(const side of activeSides()) {
+    const r=gameRect(side,width,height);
+    if(x>=r.x&&x<r.x+r.width&&y>=r.y&&y<r.y+r.height)return side;
   }
   return null;
 }
