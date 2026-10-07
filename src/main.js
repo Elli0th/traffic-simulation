@@ -6,6 +6,7 @@ import { pointAt } from './geometry.js';
 import { buildGround, buildBuildings, buildTrees, buildStops, buildLabels, setDaylight } from './world.js';
 import { MouseInput } from './input.js';
 import { Outbreak } from './virus.js';
+import { startTablePlay } from './virus-table.js';
 import * as relay from './room/relay.js';
 
 const SPEEDS = [1, 3, 10, 30]; // simulated seconds per real second
@@ -341,7 +342,7 @@ relay.on('blobs', (message) => {
 // Hands over the table, from the lidar page: drag the map, or spread two hands to zoom.
 // `pan` is how far the hand moved and `at` where it is, as fractions of the picture.
 function gesture(g) {
-  if (follower || view !== 'table') return;
+  if (follower || view !== 'table' || tablePlay?.pieces) return; // the game's pieces need the map to stay put
   if (g.zoom !== 1) {
     const before = fromTable({ x: g.at[0], y: g.at[1] });
     zoom /= g.zoom;
@@ -535,7 +536,8 @@ el('plan-undo').addEventListener('click', () => {
   else setPlan(edits.slice(0, -1));
   planDirty = true;
 });
-if (follower) el('plan').remove();
+// The screens follow the table's plan; they have no tools of their own. (Hidden, not removed: the code below still writes to it.)
+if (follower) el('plan').style.display = 'none';
 
 // Objects from the depth camera use the planning tool too: each newly placed one applies it once.
 const usedObjects = new Set();
@@ -1128,6 +1130,22 @@ function drawHeat() {
   if (heatCells.instanceColor) heatCells.instanceColor.needsUpdate = true;
 }
 
+// The same game played with pieces and hands on the table (?game=table), and shown on the screens.
+const tablePlay = params.has('game')
+  ? startTablePlay({
+      game,
+      follower,
+      onTable: params.get('game') === 'table' && !follower,
+      relay,
+      pool,
+      putBox,
+      act: doAction,
+      armed: () => armed,
+      fromTable,
+      tall: Number(params.get('tall')) || undefined,
+    })
+  : null;
+
 // ---------- frame loop ----------
 
 function advance(simSeconds) {
@@ -1135,7 +1153,8 @@ function advance(simSeconds) {
   const planning = tool !== 'object' && tool !== 'road' && !follower;
   if (planning) objectsUseTool(external);
   const zones = game ? game.lockdowns : [];
-  const blobs = mouse.blobs.concat(zones, follower ? remote : planning ? [] : external.map(fromTable));
+  // Played on the table, objects are the game's pieces: they act through the game, not by closing the street under them.
+  const blobs = mouse.blobs.concat(zones, follower ? remote : planning || tablePlay?.pieces ? [] : external.map(fromTable));
   sim.setBlobs(blobs);
   const n = Math.ceil(simSeconds / MAX_STEP);
   for (let k = 0; k < n; k++) stepAll(simSeconds / n);
@@ -1169,6 +1188,7 @@ function frame(now) {
     updateCameras();
   }
   if (game?.phase === 'running' && !paused) roundTime += dt;
+  tablePlay?.update(dt, external);
   const blobs = advance(paused ? 0 : dt * SPEEDS[speed]);
   draw(dt, blobs);
   tellScreens(blobs, now);

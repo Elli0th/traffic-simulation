@@ -42,6 +42,23 @@ to see. There is no winner: a round runs 3 minutes (30× speed) and ends with a 
 | `W` `E` `R` | Spreads faster, airborne reach, evades tests | `O` then click | Vaccinate zone |
 | | | `P` `L` | Mask mandate, test and trace |
 
+**On the table, with the room's sensors.** Open the table with `/?game=table` and the screens with
+`/?game&view=screen`. The rules and prices are the same; only the way of playing changes. The two
+players sit on opposite long sides, each with their cards along their edge of the picture.
+
+| What the sensors see | What it does |
+| --- | --- |
+| Something flat on the map (a puck, a coaster) | Spreader: seeds the virus there |
+| Something tall on the map (a cup) | Curber: locks that zone down, or vaccinates it if the Vaccinate card was pressed first |
+| A hand or object held on a card for a second | Buys that card. After a round, starts the next |
+
+The depth camera tells the two players' pieces apart by height: 60 mm and up is the Curber's
+(`?tall=80` moves the line). A piece counts once it has stood still for a second, so an arm reaching
+over the map does nothing, and a piece that cannot be afforded yet is played as soon as it can be.
+Objects seen by the lidar have no height and count as cups. Dragging and zooming the map with the
+hands is switched off, since the pieces have to stay where they were put. To rehearse without the
+room, use the camera page's pretend table: click for a cup, Shift-click for something flat.
+
 ## Planning a change
 
 The panel at the top right of the table window turns the map into a what-if tool. Choose a tool, then

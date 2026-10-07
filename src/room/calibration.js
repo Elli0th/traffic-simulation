@@ -72,7 +72,8 @@ export class Calibrator {
 }
 
 // Converts detected circles from camera pixels to table coordinates: x and y from 0 to 1 across the
-// projected image, r as a fraction of its width. `aspect` is the image's width divided by its height.
+// projected image, r as a fraction of its width, h its height above the table in the camera's depth
+// units. `aspect` is the image's width divided by its height.
 // Anything clearly off the image is dropped.
 export function toTable(blobs, H, aspect = 1.6) {
   const out = [];
@@ -83,7 +84,7 @@ export function toTable(blobs, H, aspect = 1.6) {
     const [ax, ay] = applyHomography(H, b.x + b.r, b.y);
     const [bx, by] = applyHomography(H, b.x, b.y + b.r);
     const r = (Math.hypot(ax - x, (ay - y) / aspect) + Math.hypot(bx - x, (by - y) / aspect)) / 2;
-    out.push({ x, y, r });
+    out.push({ x, y, r, h: b.height });
   }
   return out;
 }
